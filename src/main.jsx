@@ -4,8 +4,7 @@ import defaultContent from './data/content.json';
 import './styles.css';
 
 const CONTENT_STORAGE_KEY = 'zelis_shop_content';
-const ADMIN_USER = 'admin';
-const ADMIN_PASSWORD = '12345678';
+const ADMIN_TOKEN_STORAGE_KEY = 'zelis_admin_token';
 
 function mergeContent(defaultValue, savedValue) {
   if (Array.isArray(defaultValue)) {
@@ -30,6 +29,16 @@ function getInitialContent() {
   } catch {
     return defaultContent;
   }
+}
+
+async function fetchContent() {
+  const response = await fetch('/api/content');
+
+  if (!response.ok) {
+    throw new Error('Unable to load content.');
+  }
+
+  return mergeContent(defaultContent, await response.json());
 }
 
 function imageStyle(imageUrl) {
@@ -1038,32 +1047,80 @@ function ContentEditor({ value, path = [], onChange, onFocus }) {
 
 function AdminPage({ content, setContent }) {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
-  const [isAuthed, setIsAuthed] = useState(false);
+  const [token, setToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
   const [error, setError] = useState('');
   const [selectedPath, setSelectedPath] = useState('');
 
-  const handleLogin = (event) => {
+  const handleLogin = async (event) => {
     event.preventDefault();
-    if (credentials.username === ADMIN_USER && credentials.password === ADMIN_PASSWORD) {
-      setIsAuthed(true);
-      setError('');
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setToken(data.token);
+        window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, data.token);
+        setError('');
+        return;
+      }
+    } catch {
+      setError('Admin API is unavailable. Start the backend server and try again.');
       return;
     }
+
     setError('Invalid username or password.');
   };
 
-  const handleContentChange = (path, value) => {
+  const handleContentChange = async (path, value) => {
     const nextContent = updateAtPath(content, path, value);
     setContent(nextContent);
     window.localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(nextContent));
+
+    if (token) {
+      try {
+        const response = await fetch('/api/content', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(nextContent),
+        });
+
+        if (!response.ok) {
+          setError('Content changed locally, but database save failed.');
+        }
+      } catch {
+        setError('Content changed locally, but database save failed.');
+      }
+    }
   };
 
-  const resetContent = () => {
+  const resetContent = async () => {
     setContent(defaultContent);
     window.localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(defaultContent));
+
+    if (token) {
+      try {
+        await fetch('/api/content', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(defaultContent),
+        });
+      } catch {
+        setError('Content reset locally, but database save failed.');
+      }
+    }
   };
 
-  if (!isAuthed) {
+  if (!token) {
     return (
       <main className="adminLoginPage">
         <form className="adminLoginCard" onSubmit={handleLogin}>
@@ -1099,6 +1156,7 @@ function AdminPage({ content, setContent }) {
             <h1>Content Admin</h1>
             <p>Edit copy and image URLs. Changes save to this browser.</p>
             {selectedPath ? <small>Selected: {selectedPath}</small> : null}
+            {error ? <p className="adminError">{error}</p> : null}
           </div>
           <button type="button" onClick={resetContent}>Reset</button>
         </div>
@@ -1121,6 +1179,17 @@ function AdminPage({ content, setContent }) {
 function App() {
   const [content, setContent] = useState(getInitialContent);
   const isAdminPage = window.location.pathname === '/admin';
+
+  useEffect(() => {
+    fetchContent()
+      .then((loadedContent) => {
+        setContent(loadedContent);
+        window.localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(loadedContent));
+      })
+      .catch(() => {
+        setContent(getInitialContent());
+      });
+  }, []);
 
   return isAdminPage ? (
     <AdminPage content={content} setContent={setContent} />
