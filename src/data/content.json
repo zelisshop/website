@@ -1,0 +1,335 @@
+{
+  "site": {
+    "brand": "Zelis Shop",
+    "nav": {
+      "home": "Home",
+      "beauty": "Beauty",
+      "groceries": "Groceries",
+      "baby": "Baby",
+      "clothing": "Clothing"
+    },
+    "footerTagline": "A curated collective for the modern seeker of luxury and utility.",
+    "copyright": "\u00a9 2024 Zelis Shop. Luxurious Utility for Modern Living."
+  },
+  "hero": {
+    "title": "ZELIS SHOP",
+    "subtitle": "THE MODERN LIFESTYLE COLLECTIVE",
+    "button": "SHOP THE COLLECTIONS",
+    "imageUrl": ""
+  },
+  "home": {
+    "partnersTitle": "LUXURY PARTNERS",
+    "partnerLogosText": "Partner Logos",
+    "categories": [
+      {
+        "key": "beauty",
+        "title": "Beauty",
+        "imageUrl": ""
+      },
+      {
+        "key": "groceries",
+        "title": "Malaysian\nGroceries",
+        "imageUrl": ""
+      },
+      {
+        "key": "baby",
+        "title": "Baby",
+        "imageUrl": ""
+      },
+      {
+        "key": "clothing",
+        "title": "Clothing",
+        "imageUrl": ""
+      }
+    ],
+    "beautyIntro": {
+      "eyebrow": "CURATED SELECTION",
+      "title": "Beauty Essentials",
+      "viewAll": "VIEW ALL PRODUCTS",
+      "badge": "BEST SELLER",
+      "productTitle": "Botanical Radiance\nOil",
+      "description": "Cold-pressed botanical extracts for a luminous, health-focused glow. A modern staple for every skin ritual.",
+      "price": "$88.00",
+      "button": "ADD TO BAG",
+      "imageUrl": "",
+      "miniProducts": [
+        {
+          "name": "Gentle Cleansing Silk",
+          "price": "$45.00",
+          "imageUrl": ""
+        },
+        {
+          "name": "Overnight Repair Balm",
+          "price": "$62.00",
+          "imageUrl": ""
+        }
+      ]
+    },
+    "groceriesIntro": {
+      "eyebrow": "AUTHENTIC & FRESH",
+      "title": "Malaysian Favorites",
+      "description": "Discover the vibrant flavors of the archipelago. Our grocery wing connects you directly with artisanal producers, bringing premium heirloom rice, organic spices, and seasonal exotic fruits from the farm straight to your table.",
+      "items": [
+        "Hand-picked Organic Lemongrass",
+        "Small-batch Artisan Laksa Pastes",
+        "Heritage Bario Rice Collections"
+      ],
+      "button": "EXPLORE THE PANTRY"
+    },
+    "babyIntro": {
+      "eyebrow": "GENTLE LUXURY",
+      "title": "New for Little Ones",
+      "products": [
+        {
+          "name": "Organic Cotton Muslin Set",
+          "description": "Ultra-soft, breathable, and sustainably sourced.",
+          "price": "$54.00",
+          "button": "VIEW COLLECTION",
+          "imageUrl": ""
+        },
+        {
+          "name": "Heirloom Wooden Blocks",
+          "description": "Safe, non-toxic, and built to last generations.",
+          "price": "$42.00",
+          "button": "VIEW COLLECTION",
+          "imageUrl": ""
+        },
+        {
+          "name": "Gentle Dream Wash",
+          "description": "Hypoallergenic and calming lavender blend.",
+          "price": "$28.00",
+          "button": "VIEW COLLECTION",
+          "imageUrl": ""
+        }
+      ]
+    },
+    "clothingIntro": {
+      "eyebrow": "MINIMALIST ESSENTIALS",
+      "title": "The Capsule\nWardrobe",
+      "description": "Our clothing collection focuses on high-quality fabrics and timeless silhouettes. Pieces designed to be mixed, matched, and cherished for a lifetime.",
+      "button": "SHOP CLOTHING",
+      "imageUrl": ""
+    },
+    "newsletter": {
+      "title": "Stay in the Glow",
+      "description": "Join our community for exclusive access to new collections, artisan stories, and limited-edition lifestyle releases.",
+      "placeholder": "Email Address",
+      "button": "SUBSCRIBE",
+      "small": "By subscribing, you agree to our Privacy Policy."
+    }
+  },
+  "catalogs": {
+    "beauty": {
+      "title": "Beauty Collection",
+      "description": "A curated selection of high-performance skincare and artisanal cosmetics designed for the discerning individual. We bridge the gap between scientific efficacy and botanical luxury, ensuring every application is an act of self-care.",
+      "volume": "VOLUME IV / SEASONAL EDIT",
+      "showing": "Showing 18 of 63 items",
+      "products": [
+        {
+          "name": "Botanical Radiance Oil",
+          "description": "Organic Rosehip & Squalane",
+          "price": "$82.00",
+          "badge": "Bestseller",
+          "imageClass": "catalogOil",
+          "imageUrl": ""
+        },
+        {
+          "name": "Velvet Matte Crayon",
+          "description": "High-Pigment 12hr Wear",
+          "price": "$42.00",
+          "badge": "New Arrival",
+          "imageClass": "catalogLipstick",
+          "imageUrl": ""
+        },
+        {
+          "name": "Ethereal Dusk Palette",
+          "description": "Mineral Earth Pigments",
+          "price": "$65.00",
+          "imageClass": "catalogPalette",
+          "imageUrl": ""
+        },
+        {
+          "name": "Moonlit Repair Cream",
+          "description": "Nightly Renewal Complex",
+          "price": "$94.00",
+          "imageClass": "catalogCream",
+          "imageUrl": ""
+        },
+        {
+          "name": "Hydra-Bloom Mist",
+          "description": "Rose Water & Glycerin",
+          "price": "$38.00",
+          "badge": "Restocked",
+          "imageClass": "catalogMist",
+          "imageUrl": ""
+        },
+        {
+          "name": "Silk & Cedarwood EDP",
+          "description": "Limited Edition Fragrance",
+          "price": "$145.00",
+          "imageClass": "catalogPerfume",
+          "imageUrl": ""
+        }
+      ]
+    },
+    "groceries": {
+      "eyebrow": "THE ARCHIPELAGO COLLECTION",
+      "title": "The Malaysian Pantry",
+      "description": "Discover a curated collection of locally-sourced, artisanal staples and fresh organic produce directly from the heart of Malaysia. From heritage grains of Sarawak to small-batch spices from Malacca, experience the authentic soul of the archipelago.",
+      "heroImageUrl": "",
+      "products": [
+        {
+          "name": "Bario Heirloom Rice",
+          "description": "Highland cultivation, nutty aroma",
+          "price": "RM 45.00",
+          "badge": "Sarawak Heritage",
+          "imageClass": "groceryRice",
+          "imageUrl": ""
+        },
+        {
+          "name": "Artisan Laksa Paste",
+          "description": "Small-batch, Malacca traditional",
+          "price": "RM 28.50",
+          "imageClass": "groceryLaksa",
+          "imageUrl": ""
+        },
+        {
+          "name": "Premium Santan Milk",
+          "description": "First-press, organic coconuts",
+          "price": "RM 12.00",
+          "badge": "Bestseller",
+          "imageClass": "grocerySantan",
+          "imageUrl": ""
+        },
+        {
+          "name": "Organic Lemongrass",
+          "description": "Pahang farm, hand-picked",
+          "price": "RM 6.50",
+          "imageClass": "groceryLemongrass",
+          "imageUrl": ""
+        },
+        {
+          "name": "Bird's Eye Chili Flakes",
+          "description": "Extra spicy, sun-dried naturally",
+          "price": "RM 18.00",
+          "imageClass": "groceryChili",
+          "imageUrl": ""
+        },
+        {
+          "name": "Heritage Gula Melaka",
+          "description": "Pure palm nectar, hand-crafted",
+          "price": "RM 24.00",
+          "imageClass": "groceryGula",
+          "imageUrl": ""
+        }
+      ]
+    },
+    "baby": {
+      "eyebrow": "GENTLE LUXURY",
+      "title": "Little Essentials",
+      "description": "Curating a world of softness for your most precious arrivals. Our Baby Collection celebrates the purity of new life with organic textiles, heirloom-quality keepsakes, and gentle formulas that nurture both baby and planet.",
+      "products": [
+        {
+          "name": "Organic Cotton Muslin Set",
+          "description": "Breathable swaddles",
+          "price": "$64.00",
+          "badge": "New Arrival",
+          "imageClass": "babyCatalogMuslin",
+          "imageUrl": ""
+        },
+        {
+          "name": "Heirloom Wooden Blocks",
+          "description": "Sustainably sourced wood",
+          "price": "$88.00",
+          "imageClass": "babyCatalogBlocks",
+          "imageUrl": ""
+        },
+        {
+          "name": "Gentle Dream Wash",
+          "description": "Hypoallergenic formula",
+          "price": "$32.00",
+          "badge": "Top Rated",
+          "imageClass": "babyCatalogWash",
+          "imageUrl": ""
+        },
+        {
+          "name": "Sage Cashmere Set",
+          "description": "Premium blend",
+          "price": "$120.00",
+          "imageClass": "babyCatalogCashmere",
+          "imageUrl": ""
+        },
+        {
+          "name": "Ethereal Mobile",
+          "description": "Nursery decor",
+          "price": "$75.00",
+          "imageClass": "babyCatalogMobile",
+          "imageUrl": ""
+        },
+        {
+          "name": "Petal Soft Booties",
+          "description": "Vegetable tanned leather",
+          "price": "$52.00",
+          "imageClass": "babyCatalogBooties",
+          "imageUrl": ""
+        }
+      ]
+    },
+    "clothing": {
+      "eyebrow": "THE CLOTHING EDIT",
+      "title": "The Capsule Wardrobe",
+      "description": "Effortless simplicity for the modern lifestyle. Refined pieces crafted out of natural fabrics, made to elevate the daily ritual.",
+      "button": "SHOP THE EDIT",
+      "heroImageUrl": "",
+      "philosophyTitle": "The Philosophy of Less",
+      "philosophyDescription": "We believe in intentionality and quality over quantity. Each garment in our collection is designed to transition seamlessly from season to season, creating a wardrobe that is both functional and emotionally durable.",
+      "philosophyImageUrl": "",
+      "products": [
+        {
+          "name": "Silk Blouse",
+          "description": "Mulberry silk, moon stone",
+          "price": "$190",
+          "badge": "Limited",
+          "imageClass": "clothingSilkBlouse",
+          "imageUrl": ""
+        },
+        {
+          "name": "Tailored Linen Trousers",
+          "description": "Belgian linen, charcoal",
+          "price": "$220",
+          "imageClass": "clothingTrousers",
+          "imageUrl": ""
+        },
+        {
+          "name": "Cashmere Knit",
+          "description": "Grade-A cashmere, soft blush",
+          "price": "$310",
+          "imageClass": "clothingCashmere",
+          "imageUrl": ""
+        },
+        {
+          "name": "Structured Blazer",
+          "description": "Wool blend, ivory",
+          "price": "$450",
+          "imageClass": "clothingBlazer",
+          "imageUrl": ""
+        },
+        {
+          "name": "Silk Slip Dress",
+          "description": "Sand washed silk, charcoal",
+          "price": "$290",
+          "badge": "Signature",
+          "imageClass": "clothingSlipDress",
+          "imageUrl": ""
+        },
+        {
+          "name": "Heritage Trench",
+          "description": "Cotton twill, stone",
+          "price": "$380",
+          "imageClass": "clothingTrench",
+          "imageUrl": ""
+        }
+      ]
+    }
+  }
+}
