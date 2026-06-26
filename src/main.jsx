@@ -1605,6 +1605,48 @@ function labelFromKey(key) {
     .replace(/^./, (letter) => letter.toUpperCase());
 }
 
+function imageSizeHint(path) {
+  const pathString = pathKey(path);
+
+  if (pathString === 'hero.imageUrl') {
+    return 'recommended 1800 x 1300px';
+  }
+
+  if (pathString.startsWith('home.categories.')) {
+    return 'recommended 900 x 1200px';
+  }
+
+  if (pathString === 'home.beautyIntro.imageUrl') {
+    return 'recommended 900 x 900px';
+  }
+
+  if (pathString.startsWith('home.beautyIntro.miniProducts.')) {
+    return 'recommended 700 x 700px';
+  }
+
+  if (pathString.startsWith('home.babyIntro.products.')) {
+    return 'recommended 900 x 900px';
+  }
+
+  if (pathString === 'home.clothingIntro.imageUrl') {
+    return 'recommended 1200 x 900px';
+  }
+
+  if (pathString === 'catalogs.groceries.heroImageUrl') {
+    return 'recommended 1200 x 520px';
+  }
+
+  if (pathString.includes('.products.') || pathString.includes('.miniProducts.')) {
+    return 'recommended 900 x 900px';
+  }
+
+  if (pathString.includes('heroImageUrl')) {
+    return 'recommended 1200 x 650px';
+  }
+
+  return 'recommended 1200 x 900px';
+}
+
 function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, uploadingPath = '' }) {
   if (Array.isArray(value)) {
     return (
@@ -1654,10 +1696,13 @@ function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, upl
           const fieldPathKey = pathKey(fieldPath);
           const isImage = key.toLowerCase().includes('imageurl');
           const isLong = typeof childValue === 'string' && childValue.length > 72;
+          const label = isImage
+            ? `${labelFromKey(key)} (${imageSizeHint(fieldPath)})`
+            : labelFromKey(key);
 
           return (
             <label className="adminField" key={fieldPath.join('.')}>
-              <span>{labelFromKey(key)}</span>
+              <span>{label}</span>
               {isImage ? (
                 <div className="adminImageField">
                   <input
