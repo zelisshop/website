@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import defaultContent from './data/content.json';
 import './styles.css';
@@ -867,6 +867,8 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [fulfillmentType, setFulfillmentType] = useState('delivery');
+  const checkoutAbortRef = useRef(null);
   const [productDetail, setProductDetail] = useState({ loading: false, error: '', product: null, fromPage: 'home' });
   const [priceFilters, setPriceFilters] = useState({
     beauty: 200,
@@ -1062,12 +1064,17 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   const checkoutCart = async () => {
     setIsCheckingOut(true);
     setCheckoutError('');
+    checkoutAbortRef.current?.abort();
+    const checkoutAbort = new AbortController();
+    checkoutAbortRef.current = checkoutAbort;
 
     try {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: checkoutAbort.signal,
         body: JSON.stringify({
+          fulfillmentType,
           items: cartItems.map((item) => ({
             squareVariationId: item.squareVariationId,
             quantity: item.quantity,
@@ -1082,9 +1089,23 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
       window.location.href = data.checkoutUrl;
     } catch (error) {
-      setCheckoutError(error.message || 'Unable to create checkout.');
+      if (error.name !== 'AbortError') {
+        setCheckoutError(error.message || 'Unable to create checkout.');
+      }
       setIsCheckingOut(false);
+    } finally {
+      if (checkoutAbortRef.current === checkoutAbort) {
+        checkoutAbortRef.current = null;
+      }
     }
+  };
+
+  const cancelCheckout = () => {
+    checkoutAbortRef.current?.abort();
+    checkoutAbortRef.current = null;
+    setIsCheckingOut(false);
+    setCheckoutError('');
+    setIsCartOpen(false);
   };
 
   const navigateTo = (page) => (event) => {
@@ -1404,7 +1425,12 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
           </div>
 
           <div {...previewPathProps(['home', 'groceriesIntro'], highlightedPath, 'groceryEditorial')} id="groceries">
-            <div className="groceryImages" aria-hidden="true" data-reveal="left">
+            <div
+              {...previewPathProps(['home', 'groceriesIntro', 'imageUrl'], highlightedPath, 'groceryImages')}
+              style={imageStyle(content.home.groceriesIntro.imageUrl)}
+              aria-hidden="true"
+              data-reveal="left"
+            >
               <div className="fruitImage" />
               <div className="spiceImage" />
               <div className="marketImage" />
@@ -1566,10 +1592,38 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             ) : (
               <p className="cartEmpty">Your cart is empty.</p>
             )}
+            <fieldset className="cartFulfillment" disabled={isCheckingOut || !cartItems.length}>
+              <legend>Fulfillment</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="fulfillmentType"
+                  value="delivery"
+                  checked={fulfillmentType === 'delivery'}
+                  onChange={() => setFulfillmentType('delivery')}
+                />
+                <span>Delivery</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="fulfillmentType"
+                  value="pickup"
+                  checked={fulfillmentType === 'pickup'}
+                  onChange={() => setFulfillmentType('pickup')}
+                />
+                <span>Self pickup</span>
+              </label>
+            </fieldset>
             {checkoutError ? <p className="cartError">{checkoutError}</p> : null}
-            <button className="checkoutButton" type="button" disabled={!cartItems.length || isCheckingOut} onClick={checkoutCart}>
-              {isCheckingOut ? 'Opening Checkout...' : 'Checkout with Square'}
-            </button>
+            <div className="cartActions">
+              <button className="checkoutButton" type="button" disabled={!cartItems.length || isCheckingOut} onClick={checkoutCart}>
+                {isCheckingOut ? 'Opening Checkout...' : 'Checkout with Square'}
+              </button>
+              <button className="cancelCheckoutButton" type="button" onClick={cancelCheckout}>
+                Cancel
+              </button>
+            </div>
           </aside>
         ) : null}
 
@@ -1622,6 +1676,10 @@ function imageSizeHint(path) {
 
   if (pathString.startsWith('home.beautyIntro.miniProducts.')) {
     return 'recommended 700 x 700px';
+  }
+
+  if (pathString === 'home.groceriesIntro.imageUrl') {
+    return 'recommended 900 x 700px';
   }
 
   if (pathString.startsWith('home.babyIntro.products.')) {

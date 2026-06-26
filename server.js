@@ -1045,6 +1045,7 @@ app.get('/api/products/:category', async (req, res) => {
 app.post('/api/checkout', async (req, res) => {
   try {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const fulfillmentType = req.body?.fulfillmentType === 'pickup' ? 'pickup' : 'delivery';
     const lineItems = items
       .map((item) => ({
         catalog_object_id: String(item.squareVariationId || ''),
@@ -1058,17 +1059,40 @@ app.post('/api/checkout', async (req, res) => {
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const checkoutOptions = {
+      redirect_url: `${baseUrl}/?checkout=complete`,
+    };
+    const order = {
+      location_id: getSquareLocationId(),
+      line_items: lineItems,
+      metadata: {
+        fulfillment_type: fulfillmentType,
+      },
+    };
+
+    if (fulfillmentType === 'delivery') {
+      checkoutOptions.ask_for_shipping_address = true;
+    } else {
+      order.fulfillments = [
+        {
+          type: 'PICKUP',
+          state: 'PROPOSED',
+          pickup_details: {
+            schedule_type: 'ASAP',
+            prep_time_duration: 'PT30M',
+            note: 'Self pickup selected from Zelis Shop checkout.',
+          },
+        },
+      ];
+    }
+
     const data = await squareRequest('/v2/online-checkout/payment-links', {}, {
       method: 'POST',
       body: {
         idempotency_key: crypto.randomUUID(),
-        order: {
-          location_id: getSquareLocationId(),
-          line_items: lineItems,
-        },
-        checkout_options: {
-          redirect_url: `${baseUrl}/?checkout=complete`,
-        },
+        order,
+        checkout_options: checkoutOptions,
+        payment_note: fulfillmentType === 'pickup' ? 'Self pickup' : 'Delivery',
       },
     });
 

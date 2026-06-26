@@ -327,6 +327,7 @@ a {
 .hero[style] .heroStillLife,
 .categoryTile[style] > span,
 .oilPlaceholder[style] > span,
+.oilPlaceholder[style]::before,
 .miniProduct[style] > span,
 .babyProductImage[style] > span,
 .capsuleImage[style] > span,
@@ -679,6 +680,10 @@ a {
 
 .categoryTile:hover::before {
   transform: scale(1.04);
+}
+
+.categoryTile[style]::before {
+  display: none;
 }
 
 .categoryTile::before {
@@ -3298,6 +3303,17 @@ a {
   gap: 12px;
 }
 
+.groceryImages[style] {
+  display: block;
+  overflow: hidden;
+  min-height: 368px;
+  background-color: #d5c7b8;
+}
+
+.groceryImages[style] > div {
+  display: none;
+}
+
 .groceryImages > div {
   min-height: 178px;
   background: #d5c7b8;
@@ -4090,6 +4106,48 @@ a {
   color: #a31633;
 }
 
+.cartFulfillment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cartFulfillment legend {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  color: #7c0825;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.cartFulfillment label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(139, 21, 48, 0.16);
+  background: #fff;
+  color: #24191b;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cartFulfillment input {
+  accent-color: #7c0825;
+}
+
+.cartFulfillment:disabled label {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
 .cartQuantity {
   display: inline-flex;
   align-items: center;
@@ -4114,6 +4172,12 @@ a {
   font-weight: 900;
 }
 
+.cartActions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
 .checkoutButton {
   min-height: 42px;
   border: 0;
@@ -4129,6 +4193,19 @@ a {
 .checkoutButton:disabled {
   opacity: 0.48;
   cursor: not-allowed;
+}
+
+.cancelCheckoutButton {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(139, 21, 48, 0.22);
+  background: #fff;
+  color: #7c0825;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  cursor: pointer;
 }
 
 @keyframes heroFloat {
@@ -4715,4 +4792,104 @@ a {
   font-size: 18px;
   font-weight: 900;
   line-height: 1.15;
+}
+
+@media (max-width: 520px) {
+  .catalogProductCard,
+  .groceryProductCard,
+  .babyCatalogProduct,
+  .clothingProductCard {
+    grid-template-columns: 104px minmax(0, 1fr);
+    align-items: center;
+    justify-items: stretch;
+    gap: 14px;
+    min-height: 0;
+    padding: 10px;
+    text-align: left;
+  }
+
+  .catalogProductImage,
+  .babyCatalogImage,
+  .groceryProductImage,
+  .clothingProductImage {
+    width: 104px;
+    aspect-ratio: 1;
+    margin: 0;
+  }
+
+  .catalogProductCard h3,
+  .groceryProductCard h3,
+  .babyCatalogProduct h3,
+  .clothingProductCard h3,
+  .catalogProductCard p,
+  .groceryProductCard p,
+  .babyCatalogProduct p,
+  .clothingProductCard p {
+    min-height: 0;
+  }
+
+  .catalogProductCard h3,
+  .groceryProductCard h3,
+  .babyCatalogProduct h3,
+  .clothingProductCard h3 {
+    font-size: 14px;
+  }
+
+  .catalogProductCard strong,
+  .groceryProductCard strong,
+  .babyCatalogProduct strong,
+  .clothingProductCard strong {
+    font-size: 16px;
+  }
+
+  .catalogLoadingOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    padding: 18px;
+    border-radius: 0;
+    background: rgba(244, 230, 225, 0.84);
+  }
+
+  .catalogLoadingPopup {
+    width: min(100%, 300px);
+    padding: 22px 18px;
+  }
+
+  .cartDrawer {
+    right: 10px;
+    bottom: 82px;
+    left: 10px;
+    width: auto;
+    max-height: min(680px, calc(100vh - 104px));
+    padding: 18px;
+  }
+
+  .cartFulfillment,
+  .cartActions {
+    grid-template-columns: 1fr;
+  }
+
+  .checkoutButton,
+  .cancelCheckoutButton {
+    width: 100%;
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 380px) {
+  .catalogProductCard,
+  .groceryProductCard,
+  .babyCatalogProduct,
+  .clothingProductCard {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .catalogProductImage,
+  .babyCatalogImage,
+  .groceryProductImage,
+  .clothingProductImage {
+    width: 92px;
+  }
 }
