@@ -1690,17 +1690,11 @@ async function prepareImageForUpload(file, path) {
     ? 'image/png'
     : 'image/jpeg';
   const blob = await canvasToBlob(canvas, outputType, 0.82);
-  const dataBase64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
-    reader.onerror = () => reject(new Error('Unable to read selected image.'));
-    reader.readAsDataURL(blob);
-  });
 
   return {
     fileName: file.name.replace(/\.[^.]+$/, outputType === 'image/jpeg' ? '.jpg' : '.png'),
     contentType: outputType,
-    dataBase64,
+    blob,
   };
 }
 
@@ -1914,7 +1908,10 @@ function AdminPage({ content, setContent, previewContent = content }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(uploadPayload),
+        body: JSON.stringify({
+          fileName: uploadPayload.fileName,
+          contentType: uploadPayload.contentType,
+        }),
       });
       const data = await response.json();
 
@@ -1923,8 +1920,21 @@ function AdminPage({ content, setContent, previewContent = content }) {
         return;
       }
 
-      if (!response.ok || !data.imageUrl) {
-        throw new Error(data.error || 'Image upload failed. Check DigitalOcean Spaces credentials.');
+      if (!response.ok || !data.uploadUrl || !data.imageUrl) {
+        throw new Error(data.error || 'Image upload setup failed. Check DigitalOcean Spaces credentials.');
+      }
+
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: data.method || 'PUT',
+        headers: {
+          ...(data.headers || {}),
+          'Content-Type': uploadPayload.contentType,
+        },
+        body: uploadPayload.blob,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Image upload failed (${uploadResponse.status}). Check Spaces CORS and key permissions.`);
       }
 
       await handleContentChange(path, data.imageUrl);

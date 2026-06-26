@@ -47,6 +47,8 @@ loadEnvFile();
 
 const app = express();
 const adminSessionDurationMs = 24 * 60 * 60 * 1000;
+let databaseReady = false;
+let databaseInitError = '';
 const defaultContent = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'src', 'data', 'content.json'), 'utf8')
 );
@@ -298,6 +300,61 @@ async function uploadImageToBucket({ fileName, contentType, dataBase64 }) {
   }
 
   return `${bucket.publicBaseUrl}/${objectKey}`;
+}
+
+function createBucketUploadTarget({ fileName, contentType }) {
+  const bucket = getBucketConfig();
+
+  if (!bucket.accessKey || !bucket.secretKey) {
+    throw new Error('Missing DigitalOcean Spaces credentials. Set BUCKET_ACCESS_KEY to the Spaces access key ID and BUCKET_SECRET_KEY to the Spaces secret key.');
+  }
+
+  if (!contentType?.startsWith('image/')) {
+    throw new Error('Only image uploads are supported.');
+  }
+
+  const objectKey = `website-content/${cleanUploadFileName(fileName)}`;
+  const objectPath = `/${objectKey}`;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${bucket.region}/s3/aws4_request`;
+  const signedHeaders = 'host';
+  const expires = '900';
+  const query = new URLSearchParams({
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${bucket.accessKey}/${credentialScope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': expires,
+    'X-Amz-SignedHeaders': signedHeaders,
+  });
+  const canonicalRequest = [
+    'PUT',
+    objectPath,
+    query.toString(),
+    `host:${bucket.host}\n`,
+    signedHeaders,
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    sha256(canonicalRequest),
+  ].join('\n');
+  const signingKey = getSpacesSigningKey(bucket.secretKey, dateStamp, bucket.region);
+  const signature = hmac(signingKey, stringToSign, 'hex');
+
+  query.set('X-Amz-Signature', signature);
+
+  return {
+    uploadUrl: `${bucket.endpoint}${objectPath}?${query.toString()}`,
+    imageUrl: `${bucket.publicBaseUrl}/${objectKey}`,
+    method: 'PUT',
+    headers: {
+      'Content-Type': contentType,
+    },
+  };
 }
 
 function classifyCategory(categoryName) {
@@ -868,7 +925,7 @@ function requireAuth(req, res, next) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, databaseReady, databaseInitError });
 });
 
 app.post('/api/admin/login', async (req, res) => {
@@ -897,12 +954,12 @@ app.post('/api/admin/login', async (req, res) => {
 
 app.post('/api/admin/upload-image', requireAuth, async (req, res) => {
   try {
-    const imageUrl = await uploadImageToBucket(req.body || {});
-    res.json({ imageUrl });
+    const uploadTarget = createBucketUploadTarget(req.body || {});
+    res.json(uploadTarget);
   } catch (error) {
-    console.error('Failed to upload admin image');
+    console.error('Failed to create admin image upload URL');
     console.error(error);
-    res.status(502).json({ error: error.message || 'Unable to upload image.' });
+    res.status(502).json({ error: error.message || 'Unable to create image upload URL.' });
   }
 });
 
@@ -1046,14 +1103,19 @@ app.get(/.*/, (_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-initDatabase()
-  .then(() => {
-    app.listen(port, () => {
-      console.log(`Zelis Shop listening on port ${port}`);
+app.listen(port, () => {
+  console.log(`Zelis Shop listening on port ${port}`);
+
+  initDatabase()
+    .then(() => {
+      databaseReady = true;
+      databaseInitError = '';
+      console.log('Database initialized');
+    })
+    .catch((error) => {
+      databaseReady = false;
+      databaseInitError = error.message || 'Database initialization failed';
+      console.error('Failed to initialize database');
+      console.error(error);
     });
-  })
-  .catch((error) => {
-    console.error('Failed to initialize database');
-    console.error(error);
-    process.exit(1);
-  });
+});
