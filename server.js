@@ -47,6 +47,7 @@ loadEnvFile();
 
 const app = express();
 const sessions = new Map();
+const adminSessionDurationMs = 24 * 60 * 60 * 1000;
 const defaultContent = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'src', 'data', 'content.json'), 'utf8')
 );
@@ -75,7 +76,7 @@ const categoryImageClasses = {
 };
 const imageAvailabilityCache = new Map();
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '8mb' }));
 
 function getDbConfig() {
   const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'ADMIN_PASSWORD'];
@@ -213,17 +214,32 @@ async function uploadImageToBucket({ fileName, contentType, dataBase64 }) {
     `SignedHeaders=${signedHeaders}`,
     `Signature=${signature}`,
   ].join(', ');
-  const response = await fetch(`${bucket.endpoint}${objectPath}`, {
-    method: 'PUT',
-    headers: {
-      Authorization: authorization,
-      'Content-Type': contentType,
-      'x-amz-acl': 'public-read',
-      'x-amz-content-sha256': payloadHash,
-      'x-amz-date': amzDate,
-    },
-    body: fileBuffer,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 18000);
+  let response;
+
+  try {
+    response = await fetch(`${bucket.endpoint}${objectPath}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: authorization,
+        'Content-Type': contentType,
+        'x-amz-acl': 'public-read',
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': amzDate,
+      },
+      body: fileBuffer,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Bucket upload timed out before DigitalOcean Spaces responded.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Bucket upload failed (${response.status}): ${await response.text()}`);
@@ -784,9 +800,16 @@ async function initDatabase() {
 
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const session = token ? sessions.get(token) : null;
 
-  if (!token || !sessions.has(token)) {
+  if (!session) {
     res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (session.expiresAt <= Date.now()) {
+    sessions.delete(token);
+    res.status(401).json({ error: 'Session expired.' });
     return;
   }
 
@@ -812,8 +835,16 @@ app.post('/api/admin/login', async (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { userId: rows[0].id, username: rows[0].username, role: rows[0].role });
-  res.json({ token, user: rows[0] });
+  const expiresAt = Date.now() + adminSessionDurationMs;
+
+  for (const [sessionToken, session] of sessions.entries()) {
+    if (session.expiresAt <= Date.now()) {
+      sessions.delete(sessionToken);
+    }
+  }
+
+  sessions.set(token, { userId: rows[0].id, username: rows[0].username, role: rows[0].role, expiresAt });
+  res.json({ token, expiresAt, user: rows[0] });
 });
 
 app.post('/api/admin/upload-image', requireAuth, async (req, res) => {

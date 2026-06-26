@@ -1647,6 +1647,63 @@ function imageSizeHint(path) {
   return 'recommended 1200 x 900px';
 }
 
+function imageTargetSize(path) {
+  const hint = imageSizeHint(path);
+  const match = hint.match(/(\d+)\s*x\s*(\d+)px/i);
+
+  return match
+    ? { width: Number(match[1]), height: Number(match[2]) }
+    : { width: 1200, height: 900 };
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error('Unable to prepare image upload.'));
+      }
+    }, type, quality);
+  });
+}
+
+async function prepareImageForUpload(file, path) {
+  const target = imageTargetSize(path);
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, target.width / bitmap.width, target.height / bitmap.height);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    throw new Error('Unable to prepare image upload.');
+  }
+
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+
+  const outputType = file.type === 'image/png' && file.size < 800000
+    ? 'image/png'
+    : 'image/jpeg';
+  const blob = await canvasToBlob(canvas, outputType, 0.82);
+  const dataBase64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Unable to read selected image.'));
+    reader.readAsDataURL(blob);
+  });
+
+  return {
+    fileName: file.name.replace(/\.[^.]+$/, outputType === 'image/jpeg' ? '.jpg' : '.png'),
+    contentType: outputType,
+    dataBase64,
+  };
+}
+
 function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, uploadingPath = '' }) {
   if (Array.isArray(value)) {
     return (
@@ -1850,23 +1907,14 @@ function AdminPage({ content, setContent, previewContent = content }) {
     setError('');
 
     try {
-      const dataBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
-        reader.onerror = () => reject(new Error('Unable to read selected image.'));
-        reader.readAsDataURL(file);
-      });
+      const uploadPayload = await prepareImageForUpload(file, path);
       const response = await fetch('/api/admin/upload-image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          fileName: file.name,
-          contentType: file.type || 'image/jpeg',
-          dataBase64,
-        }),
+        body: JSON.stringify(uploadPayload),
       });
       const data = await response.json();
 
