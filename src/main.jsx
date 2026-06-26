@@ -41,6 +41,46 @@ async function fetchContent() {
   return mergeContent(defaultContent, await response.json());
 }
 
+async function fetchCatalogPage(category, cursor = '', filters = {}) {
+  const params = new URLSearchParams();
+
+  if (cursor) {
+    params.set('cursor', cursor);
+  }
+
+  if (filters.maxPrice && filters.maxPrice < 200) {
+    params.set('maxPrice', filters.maxPrice);
+  }
+
+  if (filters.sort) {
+    params.set('sort', filters.sort);
+  }
+
+  if (filters.search) {
+    params.set('search', filters.search);
+  }
+
+  const query = params.toString() ? `?${params}` : '';
+  const response = await fetch(`/api/products/${category}${query}`);
+
+  if (!response.ok) {
+    throw new Error('Unable to load Square products.');
+  }
+
+  return response.json();
+}
+
+async function fetchProductDetail(productId) {
+  const response = await fetch(`/api/product/${encodeURIComponent(productId)}`);
+
+  if (!response.ok) {
+    throw new Error('Unable to load product detail.');
+  }
+
+  const data = await response.json();
+  return data.product;
+}
+
 function imageStyle(imageUrl) {
   return imageUrl
     ? { backgroundImage: `url("${imageUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
@@ -93,6 +133,166 @@ function Icon({ children, label }) {
     <button className="iconButton" aria-label={label} type="button">
       {children}
     </button>
+  );
+}
+
+function catalogStatusText(category, products, state, fallbackText = '') {
+  if (state?.loading) {
+    return 'Loading products...';
+  }
+
+  if (state?.error) {
+    return state.error;
+  }
+
+  if (state?.products?.length) {
+    return `Page ${state.page || 1} - ${products.length} ${category} products`;
+  }
+
+  return fallbackText || `Showing ${products.length} products`;
+}
+
+function CatalogPager({ state = {}, onPrevious, onNext, label }) {
+  return (
+    <nav className="catalogPagination" aria-label={label}>
+      <button type="button" aria-label="Previous page" disabled={state.loading || (state.page || 1) <= 1} onClick={onPrevious}>
+        {'<'}
+      </button>
+      <span className="active">{String(state.page || 1).padStart(2, '0')}</span>
+      <button type="button" aria-label="Next page" disabled={state.loading || !state.nextCursor} onClick={onNext}>
+        {'>'}
+      </button>
+    </nav>
+  );
+}
+
+function CatalogLoadingPopup({ active }) {
+  if (!active) {
+    return null;
+  }
+
+  return (
+    <div className="catalogLoadingOverlay" role="status" aria-live="polite">
+      <div className="catalogLoadingPopup">
+        <span aria-hidden="true" />
+        <strong>Loading Products</strong>
+        <p>Fetching the latest catalogue from Square.</p>
+      </div>
+    </div>
+  );
+}
+
+function ProductCard({
+  product,
+  highlightedPath,
+  path,
+  cardClass,
+  imageClass,
+  badgeClass = '',
+  onAddToCart,
+  onViewProduct,
+}) {
+  const hasImage = Boolean(product.imageUrl);
+  const productImageClass = hasImage
+    ? `${imageClass} ${product.imageClass || ''}`
+    : `${imageClass} productImagePlaceholder`;
+
+  return (
+    <article {...previewPathProps(path, highlightedPath, cardClass)} key={product.id || product.name}>
+      <div className={productImageClass} style={imageStyle(product.imageUrl)} aria-hidden="true">
+        {product.badge ? <span className={badgeClass}>{product.badge}</span> : null}
+        <i />
+      </div>
+      <h3>{product.name}</h3>
+      <p>{product.description}</p>
+      <strong>{product.price}</strong>
+      <div className="productActions">
+        <button className="viewProductButton" type="button" onClick={() => onViewProduct(product.id)}>
+          View
+        </button>
+        <button className="addToCartButton" type="button" onClick={() => onAddToCart(product)}>
+          Add to Cart
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function ProductDetailPage({ product, loading, error, onBack, onAddToCart }) {
+  if (loading) {
+    return (
+      <section className="productDetailPage">
+        <button className="backButton" type="button" onClick={onBack}>Back to products</button>
+        <p className="productDetailStatus">Loading product...</p>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="productDetailPage">
+        <button className="backButton" type="button" onClick={onBack}>Back to products</button>
+        <p className="productDetailStatus">{error}</p>
+      </section>
+    );
+  }
+
+  if (!product) {
+    return null;
+  }
+
+  return (
+    <section className="productDetailPage" aria-label="Product details">
+      <button className="backButton" type="button" onClick={onBack}>Back to products</button>
+
+      <div className="productDetailLayout">
+        <div
+          className={product.imageUrl ? 'productDetailImage' : 'productDetailImage productImagePlaceholder'}
+          style={imageStyle(product.imageUrl)}
+          aria-hidden="true"
+        >
+          <i />
+        </div>
+
+        <div className="productDetailContent">
+          <div className="productDetailHeading">
+            <span>{product.categories?.join(' / ') || 'Zelis Shop'}</span>
+            <h1>{product.name}</h1>
+            <strong>{product.price}</strong>
+          </div>
+
+          <p className="productDetailDescription">{product.plainDescription || product.description}</p>
+
+          <button className="detailAddButton" type="button" onClick={() => onAddToCart(product)}>
+            Add to Cart
+          </button>
+
+          <div className="productInfoGrid">
+            <div><span>Product Type</span><strong>{product.productType || 'Standard'}</strong></div>
+            <div><span>Online Visibility</span><strong>{product.ecomVisibility || 'Not specified'}</strong></div>
+            <div><span>Taxable</span><strong>{product.isTaxable ? 'Yes' : 'No'}</strong></div>
+            <div><span>Square Item ID</span><strong>{product.id}</strong></div>
+            {product.abbreviation ? <div><span>Abbreviation</span><strong>{product.abbreviation}</strong></div> : null}
+            {product.updatedAt ? <div><span>Updated</span><strong>{new Date(product.updatedAt).toLocaleDateString()}</strong></div> : null}
+          </div>
+
+          <section className="variationSection" aria-label="Product variations">
+            <h2>Variations</h2>
+            <div className="variationList">
+              {product.variations?.map((variation) => (
+                <article key={variation.id}>
+                  <div>
+                    <h3>{variation.name}</h3>
+                    {variation.sku ? <p>SKU: {variation.sku}</p> : null}
+                  </div>
+                  <strong>{variation.price}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -261,8 +461,101 @@ const clothingCatalogProducts = [
   },
 ];
 
-function BeautyCatalog({ content, highlightedPath = '' }) {
+function PriceRangeFilter({ value, onChange }) {
+  return (
+    <div className="filterGroup priceFilter">
+      <div className="priceFilterHeader">
+        <h3>Price Range</h3>
+        <strong>{value >= 200 ? '$200+' : `$${value}`}</strong>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="200"
+        step="5"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <div className="rangeLabels"><span>$0</span><span>$200+</span></div>
+    </div>
+  );
+}
+
+function SortFilter({ category, value, onChange }) {
+  return (
+    <label className="sortFilter">
+      <span>Sort By</span>
+      <select value={value} onChange={(event) => onChange(category, event.target.value)}>
+        <option value="image-name">Images First</option>
+        <option value="name">Name A-Z</option>
+        <option value="price-low">Price Low-High</option>
+        <option value="price-high">Price High-Low</option>
+      </select>
+    </label>
+  );
+}
+
+function SearchFilter({ category, value, onChange }) {
+  return (
+    <label className="searchFilter">
+      <span>Search</span>
+      <input
+        type="search"
+        value={value}
+        placeholder="Search product"
+        onChange={(event) => onChange(category, event.target.value)}
+      />
+    </label>
+  );
+}
+
+function CatalogControls({
+  category,
+  products,
+  catalogState,
+  fallbackText,
+  priceFilter,
+  onPriceFilterChange,
+  sortFilter,
+  onSortFilterChange,
+  searchFilter,
+  onSearchFilterChange,
+  highlightedPath,
+  showingPath,
+}) {
+  const statusProps = showingPath
+    ? previewPathProps(showingPath, highlightedPath)
+    : {};
+
+  return (
+    <div className="catalogToolbar catalogTopFilters">
+      <p {...statusProps}>{catalogStatusText(category, products, catalogState, fallbackText)}</p>
+      <div className="catalogFilterControls">
+        <SearchFilter category={category} value={searchFilter} onChange={onSearchFilterChange} />
+        <PriceRangeFilter value={priceFilter} onChange={(value) => onPriceFilterChange(category, value)} />
+        <SortFilter category={category} value={sortFilter} onChange={onSortFilterChange} />
+      </div>
+    </div>
+  );
+}
+
+function BeautyCatalog({
+  content,
+  highlightedPath = '',
+  products,
+  catalogState,
+  onPage,
+  onAddToCart,
+  onViewProduct,
+  priceFilter,
+  onPriceFilterChange,
+  sortFilter,
+  onSortFilterChange,
+  searchFilter,
+  onSearchFilterChange,
+}) {
   const beauty = content.catalogs.beauty;
+  const displayProducts = products || beauty.products;
   return (
     <section className="catalogPageSection" aria-label="Beauty product catalogue">
       <div {...previewPathProps(['catalogs', 'beauty'], highlightedPath, 'catalogHeroHeader')}>
@@ -274,65 +567,71 @@ function BeautyCatalog({ content, highlightedPath = '' }) {
       </div>
 
       <div className="beautyCatalog" id="beauty-catalog">
-        <aside className="catalogFilters" aria-label="Beauty catalog filters">
-          <div className="filterGroup">
-            <h3>Categories</h3>
-            <a href="#skincare"><span>Skincare</span><em>31</em></a>
-            <a className="active" href="#makeup"><span>Makeup</span><em>18</em></a>
-            <a href="#fragrance"><span>Fragrance</span><em>09</em></a>
-            <a href="#wellness"><span>Wellness</span><em>05</em></a>
-          </div>
-
-          <div className="filterGroup">
-            <h3>Skin Type</h3>
-            <label><input type="checkbox" /> Sensitive</label>
-            <label><input type="checkbox" defaultChecked /> Dry &amp; Dehydrated</label>
-            <label><input type="checkbox" /> Oily / Combination</label>
-          </div>
-
-          <div className="filterGroup">
-            <h3>Price Range</h3>
-            <div className="rangeTrack" aria-hidden="true"><span /></div>
-            <div className="rangeLabels"><span>$0</span><span>$200+</span></div>
-          </div>
-        </aside>
-
         <div className="catalogMain">
-          <div className="catalogToolbar">
-            <p {...previewPathProps(['catalogs', 'beauty', 'showing'], highlightedPath)}>{beauty.showing}</p>
-            <button type="button">Sort By</button>
+          <CatalogControls
+            category="beauty"
+            products={displayProducts}
+            catalogState={catalogState}
+            fallbackText={beauty.showing}
+            priceFilter={priceFilter}
+            onPriceFilterChange={onPriceFilterChange}
+            sortFilter={sortFilter}
+            onSortFilterChange={onSortFilterChange}
+            searchFilter={searchFilter}
+            onSearchFilterChange={onSearchFilterChange}
+            highlightedPath={highlightedPath}
+            showingPath={['catalogs', 'beauty', 'showing']}
+          />
+
+          <div className="catalogProductsArea">
+            <CatalogLoadingPopup active={catalogState?.loading} />
+            <div className="catalogGrid">
+              {displayProducts.map((product, index) => (
+                <ProductCard
+                  key={product.id || product.name}
+                  product={product}
+                  index={index}
+                  highlightedPath={highlightedPath}
+                  path={['catalogs', 'beauty', 'products', index]}
+                  cardClass="catalogProductCard"
+                  imageClass="catalogProductImage"
+                  badgeClass="catalogBadge"
+                  onAddToCart={onAddToCart}
+                  onViewProduct={onViewProduct}
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="catalogGrid">
-            {beauty.products.map((product, index) => (
-              <article {...previewPathProps(['catalogs', 'beauty', 'products', index], highlightedPath, 'catalogProductCard')} key={product.name}>
-                <div className={`catalogProductImage ${product.imageClass}`} style={imageStyle(product.imageUrl)} aria-hidden="true">
-                  {product.badge ? <span className="catalogBadge">{product.badge}</span> : null}
-                  <i />
-                </div>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
-                <strong>{product.price}</strong>
-              </article>
-            ))}
-          </div>
-
-          <nav className="catalogPagination" aria-label="Beauty catalog pagination">
-            <button type="button" aria-label="Previous page">{'<'}</button>
-            <a className="active" href="#page-1">01</a>
-            <a href="#page-2">02</a>
-            <a href="#page-3">03</a>
-            <a href="#page-4">04</a>
-            <button type="button" aria-label="Next page">{'>'}</button>
-          </nav>
+          <CatalogPager
+            state={catalogState}
+            label="Beauty catalog pagination"
+            onPrevious={() => onPage('beauty', 'previous')}
+            onNext={() => onPage('beauty', 'next')}
+          />
         </div>
       </div>
     </section>
   );
 }
 
-function ClothingCatalog({ content, highlightedPath = '' }) {
+function ClothingCatalog({
+  content,
+  highlightedPath = '',
+  products,
+  catalogState,
+  onPage,
+  onAddToCart,
+  onViewProduct,
+  priceFilter,
+  onPriceFilterChange,
+  sortFilter,
+  onSortFilterChange,
+  searchFilter,
+  onSearchFilterChange,
+}) {
   const clothing = content.catalogs.clothing;
+  const displayProducts = products || clothing.products;
   return (
     <section className="clothingCatalogPage" aria-label="Clothing product catalogue">
       <div className="clothingHero">
@@ -352,69 +651,45 @@ function ClothingCatalog({ content, highlightedPath = '' }) {
       </div>
 
       <div className="clothingCatalog" id="clothing-catalog">
-        <aside className="clothingFilters" aria-label="Clothing catalogue filters">
-          <div className="filterGroup">
-            <h3>Collections</h3>
-            <a className="active" href="#modern-classics"><span>Modern Classics</span><em>16</em></a>
-            <a href="#silk-series"><span>The Silk Series</span><em>09</em></a>
-            <a href="#linen-living"><span>Linen Living</span><em>12</em></a>
-            <a href="#winter-knits"><span>Winter Knits</span><em>07</em></a>
-          </div>
+        <div className="clothingCatalogMain">
+          <CatalogControls
+            category="clothing"
+            products={displayProducts}
+            catalogState={catalogState}
+            fallbackText="Showing clothing products"
+            priceFilter={priceFilter}
+            onPriceFilterChange={onPriceFilterChange}
+            sortFilter={sortFilter}
+            onSortFilterChange={onSortFilterChange}
+            searchFilter={searchFilter}
+            onSearchFilterChange={onSearchFilterChange}
+          />
 
-          <div className="filterGroup">
-            <h3>Fabrics</h3>
-            <label><input type="checkbox" /> Silk</label>
-            <label><input type="checkbox" /> Linen</label>
-            <label><input type="checkbox" /> Wool</label>
-            <label><input type="checkbox" /> Cashmere</label>
-          </div>
-
-          <div className="filterGroup">
-            <h3>Size</h3>
-            <div className="sizeGrid">
-              <button type="button">XS</button>
-              <button type="button">S</button>
-              <button className="active" type="button">M</button>
-              <button type="button">L</button>
+          <div className="catalogProductsArea">
+            <CatalogLoadingPopup active={catalogState?.loading} />
+            <div className="clothingGrid" id="clothing-grid">
+              {displayProducts.map((product, index) => (
+                <ProductCard
+                  key={product.id || product.name}
+                  product={product}
+                  index={index}
+                  highlightedPath={highlightedPath}
+                  path={['catalogs', 'clothing', 'products', index]}
+                  cardClass="clothingProductCard"
+                  imageClass="clothingProductImage"
+                  onAddToCart={onAddToCart}
+                  onViewProduct={onViewProduct}
+                />
+              ))}
             </div>
           </div>
 
-          <article className="clothingNote">
-            <h4>Complete Your Set</h4>
-            <p>Save 10% when you pair trousers and knitwear from the same capsule.</p>
-            <a href="#sets">Learn More</a>
-          </article>
-        </aside>
-
-        <div className="clothingCatalogMain">
-          <div className="clothingToolbar">
-            <p>Showing 1-6 of 48 items</p>
-            <button type="button">Sort By <strong>Featured</strong></button>
-          </div>
-
-          <div className="clothingGrid" id="clothing-grid">
-            {clothing.products.map((product, index) => (
-              <article {...previewPathProps(['catalogs', 'clothing', 'products', index], highlightedPath, 'clothingProductCard')} key={product.name}>
-                <div className={`clothingProductImage ${product.imageClass}`} style={imageStyle(product.imageUrl)} aria-hidden="true">
-                  {product.badge ? <span>{product.badge}</span> : null}
-                  <i />
-                </div>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
-                <strong>{product.price}</strong>
-              </article>
-            ))}
-          </div>
-
-          <nav className="clothingPagination" aria-label="Clothing catalogue pagination">
-            <button type="button" aria-label="Previous page">{'<'}</button>
-            <a className="active" href="#clothing-page-1">1</a>
-            <a href="#clothing-page-2">2</a>
-            <a href="#clothing-page-3">3</a>
-            <span>...</span>
-            <a href="#clothing-page-8">8</a>
-            <button type="button" aria-label="Next page">{'>'}</button>
-          </nav>
+          <CatalogPager
+            state={catalogState}
+            label="Clothing catalogue pagination"
+            onPrevious={() => onPage('clothing', 'previous')}
+            onNext={() => onPage('clothing', 'next')}
+          />
         </div>
       </div>
 
@@ -435,8 +710,23 @@ function ClothingCatalog({ content, highlightedPath = '' }) {
   );
 }
 
-function BabyCatalog({ content, highlightedPath = '' }) {
+function BabyCatalog({
+  content,
+  highlightedPath = '',
+  products,
+  catalogState,
+  onPage,
+  onAddToCart,
+  onViewProduct,
+  priceFilter,
+  onPriceFilterChange,
+  sortFilter,
+  onSortFilterChange,
+  searchFilter,
+  onSearchFilterChange,
+}) {
   const baby = content.catalogs.baby;
+  const displayProducts = products || baby.products;
   return (
     <section className="catalogPageSection babyCatalogPage" aria-label="Baby product catalogue">
       <div className="babyCatalogHeader">
@@ -446,74 +736,71 @@ function BabyCatalog({ content, highlightedPath = '' }) {
           <p {...previewPathProps(['catalogs', 'baby', 'description'], highlightedPath)}>{baby.description}</p>
         </div>
 
-        <div className="babyCatalogActions">
-          <button type="button">Filter Results</button>
-          <button type="button">Sort By: Newest</button>
-        </div>
       </div>
 
       <div className="babyCatalog" id="baby-catalog">
-        <aside className="babyCatalogFilters" aria-label="Baby catalogue filters">
-          <div className="filterGroup">
-            <h3>Category</h3>
-            <label><input type="checkbox" defaultChecked /> Nursery Bedding</label>
-            <label><input type="checkbox" /> Heirloom Toys</label>
-            <label><input type="checkbox" /> Skin &amp; Bath</label>
-            <label><input type="checkbox" /> Newborn Sets</label>
-          </div>
-
-          <div className="filterGroup">
-            <h3>Material</h3>
-            <label><input type="checkbox" /> Organic Cotton</label>
-            <label><input type="checkbox" /> Bamboo Linen</label>
-            <label><input type="checkbox" /> Sustainable Wood</label>
-            <label><input type="checkbox" /> Cashmere Blend</label>
-          </div>
-
-          <div className="filterGroup">
-            <h3>Age Range</h3>
-            <label><input type="checkbox" /> Newborn (0-3m)</label>
-            <label><input type="checkbox" /> Infant (3-12m)</label>
-            <label><input type="checkbox" /> Toddler (1-3y)</label>
-          </div>
-
-          <article className="babyPromoCard">
-            <span>Limited Edition</span>
-            <h4>The Blush Edit</h4>
-            <p>Explore seasonal softness.</p>
-          </article>
-        </aside>
-
         <div className="babyCatalogMain">
-          <div className="babyCatalogGrid">
-            {baby.products.map((product, index) => (
-              <article {...previewPathProps(['catalogs', 'baby', 'products', index], highlightedPath, 'babyCatalogProduct')} key={product.name}>
-                <div className={`babyCatalogImage ${product.imageClass}`} style={imageStyle(product.imageUrl)} aria-hidden="true">
-                  {product.badge ? <span>{product.badge}</span> : null}
-                  <i />
-                </div>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
-                <strong>{product.price}</strong>
-              </article>
-            ))}
+          <CatalogControls
+            category="baby"
+            products={displayProducts}
+            catalogState={catalogState}
+            fallbackText="Showing baby products"
+            priceFilter={priceFilter}
+            onPriceFilterChange={onPriceFilterChange}
+            sortFilter={sortFilter}
+            onSortFilterChange={onSortFilterChange}
+            searchFilter={searchFilter}
+            onSearchFilterChange={onSearchFilterChange}
+          />
+
+          <div className="catalogProductsArea">
+            <CatalogLoadingPopup active={catalogState?.loading} />
+            <div className="babyCatalogGrid">
+              {displayProducts.map((product, index) => (
+                <ProductCard
+                  key={product.id || product.name}
+                  product={product}
+                  index={index}
+                  highlightedPath={highlightedPath}
+                  path={['catalogs', 'baby', 'products', index]}
+                  cardClass="babyCatalogProduct"
+                  imageClass="babyCatalogImage"
+                  onAddToCart={onAddToCart}
+                  onViewProduct={onViewProduct}
+                />
+              ))}
+            </div>
           </div>
 
-          <nav className="babyPagination" aria-label="Baby catalogue pagination">
-            <button type="button" aria-label="Previous page">{'<'}</button>
-            <a className="active" href="#baby-page-1">1</a>
-            <a href="#baby-page-2">2</a>
-            <a href="#baby-page-3">3</a>
-            <button type="button" aria-label="Next page">{'>'}</button>
-          </nav>
+          <CatalogPager
+            state={catalogState}
+            label="Baby catalogue pagination"
+            onPrevious={() => onPage('baby', 'previous')}
+            onNext={() => onPage('baby', 'next')}
+          />
         </div>
       </div>
     </section>
   );
 }
 
-function GroceryCatalog({ content, highlightedPath = '' }) {
+function GroceryCatalog({
+  content,
+  highlightedPath = '',
+  products,
+  catalogState,
+  onPage,
+  onAddToCart,
+  onViewProduct,
+  priceFilter,
+  onPriceFilterChange,
+  sortFilter,
+  onSortFilterChange,
+  searchFilter,
+  onSearchFilterChange,
+}) {
   const groceries = content.catalogs.groceries;
+  const displayProducts = products || groceries.products;
   return (
     <section className="catalogPageSection groceryPageSection" aria-label="Groceries product catalogue">
       <div className="groceryCatalogHero">
@@ -528,45 +815,45 @@ function GroceryCatalog({ content, highlightedPath = '' }) {
       </div>
 
       <div className="groceryCatalog" id="grocery-catalog">
-        <aside className="groceryCatalogFilters" aria-label="Groceries catalogue filters">
-          <div className="filterGroup">
-            <h3>Categories</h3>
-            <a className="active" href="#pantry-staples"><span>Pantry Staples</span><em>12</em></a>
-            <a href="#fresh-produce"><span>Fresh Produce</span><em>18</em></a>
-            <a href="#spices-pastes"><span>Spices &amp; Pastes</span><em>21</em></a>
-            <a href="#organic-snacks"><span>Organic Snacks</span><em>08</em></a>
-          </div>
+        <div className="groceryCatalogMain">
+          <CatalogControls
+            category="groceries"
+            products={displayProducts}
+            catalogState={catalogState}
+            fallbackText="Showing groceries products"
+            priceFilter={priceFilter}
+            onPriceFilterChange={onPriceFilterChange}
+            sortFilter={sortFilter}
+            onSortFilterChange={onSortFilterChange}
+            searchFilter={searchFilter}
+            onSearchFilterChange={onSearchFilterChange}
+          />
 
-          <div className="filterGroup">
-            <h3>Dietary</h3>
-            <div className="dietaryTags">
-              <button type="button">Halal</button>
-              <button type="button">Vegan</button>
-              <button className="active" type="button">Organic</button>
+          <div className="catalogProductsArea">
+            <CatalogLoadingPopup active={catalogState?.loading} />
+            <div className="groceryCatalogGrid">
+              {displayProducts.map((product, index) => (
+                <ProductCard
+                  key={product.id || product.name}
+                  product={product}
+                  index={index}
+                  highlightedPath={highlightedPath}
+                  path={['catalogs', 'groceries', 'products', index]}
+                  cardClass="groceryProductCard"
+                  imageClass="groceryProductImage"
+                  onAddToCart={onAddToCart}
+                  onViewProduct={onViewProduct}
+                />
+              ))}
             </div>
           </div>
 
-          <blockquote>
-            We partner with 16 independent Malaysian farms to bring you heritage crops that are pesticide-free and fairly traded.
-          </blockquote>
-        </aside>
-
-        <div className="groceryCatalogMain">
-          <div className="groceryCatalogGrid">
-            {groceries.products.map((product, index) => (
-              <article {...previewPathProps(['catalogs', 'groceries', 'products', index], highlightedPath, 'groceryProductCard')} key={product.name}>
-                <div className={`groceryProductImage ${product.imageClass}`} style={imageStyle(product.imageUrl)} aria-hidden="true">
-                  {product.badge ? <span>{product.badge}</span> : null}
-                  <i />
-                </div>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
-                <strong>{product.price}</strong>
-              </article>
-            ))}
-          </div>
-
-          <a className="groceryMoreButton" href="#more-staples">EXPLORE MORE STAPLES</a>
+          <CatalogPager
+            state={catalogState}
+            label="Groceries catalogue pagination"
+            onPrevious={() => onPage('groceries', 'previous')}
+            onNext={() => onPage('groceries', 'next')}
+          />
         </div>
       </div>
     </section>
@@ -575,6 +862,230 @@ function GroceryCatalog({ content, highlightedPath = '' }) {
 
 function Storefront({ content, preview = false, highlightedPath = '' }) {
   const [activePage, setActivePage] = useState('home');
+  const [catalogPages, setCatalogPages] = useState({});
+  const [cartItems, setCartItems] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [productDetail, setProductDetail] = useState({ loading: false, error: '', product: null, fromPage: 'home' });
+  const [priceFilters, setPriceFilters] = useState({
+    beauty: 200,
+    groceries: 200,
+    baby: 200,
+    clothing: 200,
+  });
+  const [sortFilters, setSortFilters] = useState({
+    beauty: 'image-name',
+    groceries: 'image-name',
+    baby: 'image-name',
+    clothing: 'image-name',
+  });
+  const [searchFilters, setSearchFilters] = useState({
+    beauty: '',
+    groceries: '',
+    baby: '',
+    clothing: '',
+  });
+  const [debouncedSearchFilters, setDebouncedSearchFilters] = useState(searchFilters);
+
+  const loadCatalogPage = async (category, direction = 'initial') => {
+    if (preview) {
+      return;
+    }
+
+    const current = catalogPages[category] || { page: 1, cursors: [''], cursor: '' };
+    let cursor = current.cursor || '';
+    let page = current.page || 1;
+    let cursors = current.cursors || [''];
+
+    if (direction === 'next') {
+      if (!current.nextCursor) {
+        return;
+      }
+      cursor = current.nextCursor;
+      page += 1;
+      cursors = [...cursors, current.nextCursor];
+    } else if (direction === 'previous') {
+      if (page <= 1) {
+        return;
+      }
+      page -= 1;
+      cursor = cursors[page - 1] || '';
+      cursors = cursors.slice(0, page);
+    }
+
+    setCatalogPages((pages) => ({
+      ...pages,
+      [category]: {
+        ...(pages[category] || {}),
+        loading: true,
+        error: '',
+      },
+    }));
+
+    try {
+      const data = await fetchCatalogPage(category, cursor, {
+        maxPrice: priceFilters[category],
+        sort: sortFilters[category],
+        search: debouncedSearchFilters[category],
+      });
+      setCatalogPages((pages) => ({
+        ...pages,
+        [category]: {
+          products: data.products || [],
+          nextCursor: data.nextCursor || '',
+          cursor,
+          cursors,
+          page,
+          loading: false,
+          error: '',
+        },
+      }));
+    } catch {
+      setCatalogPages((pages) => ({
+        ...pages,
+        [category]: {
+          ...(pages[category] || {}),
+          loading: false,
+          error: 'Unable to load Square products.',
+        },
+      }));
+    }
+  };
+
+  const changePriceFilter = (category, value) => {
+    setPriceFilters((filters) => ({
+      ...filters,
+      [category]: value,
+    }));
+    setCatalogPages((pages) => ({
+      ...pages,
+      [category]: {
+        ...(pages[category] || {}),
+        products: [],
+        nextCursor: '',
+        cursor: '',
+        cursors: [''],
+        page: 1,
+      },
+    }));
+  };
+
+  const resetCatalogPage = (category) => {
+    setCatalogPages((pages) => ({
+      ...pages,
+      [category]: {
+        ...(pages[category] || {}),
+        products: [],
+        nextCursor: '',
+        cursor: '',
+        cursors: [''],
+        page: 1,
+      },
+    }));
+  };
+
+  const changeSortFilter = (category, value) => {
+    setSortFilters((filters) => ({
+      ...filters,
+      [category]: value,
+    }));
+    resetCatalogPage(category);
+  };
+
+  const changeSearchFilter = (category, value) => {
+    setSearchFilters((filters) => ({
+      ...filters,
+      [category]: value,
+    }));
+    resetCatalogPage(category);
+  };
+
+  const addToCart = (product) => {
+    if (!product.squareVariationId) {
+      setCheckoutError('This product is missing a Square variation and cannot be checked out.');
+      return;
+    }
+
+    setCartItems((items) => {
+      const existing = items.find((item) => item.squareVariationId === product.squareVariationId);
+
+      if (existing) {
+        return items.map((item) => (
+          item.squareVariationId === product.squareVariationId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        ));
+      }
+
+      return [...items, { ...product, quantity: 1 }];
+    });
+    setCheckoutError('');
+    setIsCartOpen(true);
+  };
+
+  const viewProduct = async (productId) => {
+    if (!productId || preview) {
+      return;
+    }
+
+    const fromPage = activePage;
+    setProductDetail({ loading: true, error: '', product: null, fromPage });
+    setActivePage('product');
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+    try {
+      const product = await fetchProductDetail(productId);
+      setProductDetail({ loading: false, error: '', product, fromPage });
+    } catch {
+      setProductDetail({ loading: false, error: 'Unable to load product detail.', product: null, fromPage });
+    }
+  };
+
+  const closeProductDetail = () => {
+    setActivePage(productDetail.fromPage && productDetail.fromPage !== 'product' ? productDetail.fromPage : 'home');
+    setProductDetail((detail) => ({ ...detail, loading: false, error: '', product: null }));
+  };
+
+  const updateCartQuantity = (variationId, quantity) => {
+    setCartItems((items) => items
+      .map((item) => (
+        item.squareVariationId === variationId
+          ? { ...item, quantity: Math.max(0, quantity) }
+          : item
+      ))
+      .filter((item) => item.quantity > 0));
+  };
+
+  const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+
+  const checkoutCart = async () => {
+    setIsCheckingOut(true);
+    setCheckoutError('');
+
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cartItems.map((item) => ({
+            squareVariationId: item.squareVariationId,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.checkoutUrl) {
+        throw new Error(data.error || 'Unable to create checkout.');
+      }
+
+      window.location.href = data.checkoutUrl;
+    } catch (error) {
+      setCheckoutError(error.message || 'Unable to create checkout.');
+      setIsCheckingOut(false);
+    }
+  };
 
   const navigateTo = (page) => (event) => {
     event.preventDefault();
@@ -623,6 +1134,22 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
     return () => observer.disconnect();
   }, [activePage]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchFilters(searchFilters);
+    }, 320);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchFilters]);
+
+  useEffect(() => {
+    if (preview || activePage === 'home' || activePage === 'product' || catalogPages[activePage]?.products?.length) {
+      return;
+    }
+
+    loadCatalogPage(activePage);
+  }, [activePage, preview, priceFilters[activePage], sortFilters[activePage], debouncedSearchFilters[activePage]]);
 
   useEffect(() => {
     if (!preview || !highlightedPath) {
@@ -696,14 +1223,78 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
           </div>
         </header>
 
-        {activePage === 'beauty' ? (
-          <BeautyCatalog content={content} highlightedPath={highlightedPath} />
+        {activePage === 'product' ? (
+          <ProductDetailPage
+            product={productDetail.product}
+            loading={productDetail.loading}
+            error={productDetail.error}
+            onBack={closeProductDetail}
+            onAddToCart={addToCart}
+          />
+        ) : activePage === 'beauty' ? (
+          <BeautyCatalog
+            content={content}
+            highlightedPath={highlightedPath}
+            products={catalogPages.beauty?.products}
+            catalogState={catalogPages.beauty}
+            onPage={loadCatalogPage}
+            onAddToCart={addToCart}
+            onViewProduct={viewProduct}
+            priceFilter={priceFilters.beauty}
+            onPriceFilterChange={changePriceFilter}
+            sortFilter={sortFilters.beauty}
+            onSortFilterChange={changeSortFilter}
+            searchFilter={searchFilters.beauty}
+            onSearchFilterChange={changeSearchFilter}
+          />
         ) : activePage === 'groceries' ? (
-          <GroceryCatalog content={content} highlightedPath={highlightedPath} />
+          <GroceryCatalog
+            content={content}
+            highlightedPath={highlightedPath}
+            products={catalogPages.groceries?.products}
+            catalogState={catalogPages.groceries}
+            onPage={loadCatalogPage}
+            onAddToCart={addToCart}
+            onViewProduct={viewProduct}
+            priceFilter={priceFilters.groceries}
+            onPriceFilterChange={changePriceFilter}
+            sortFilter={sortFilters.groceries}
+            onSortFilterChange={changeSortFilter}
+            searchFilter={searchFilters.groceries}
+            onSearchFilterChange={changeSearchFilter}
+          />
         ) : activePage === 'baby' ? (
-          <BabyCatalog content={content} highlightedPath={highlightedPath} />
+          <BabyCatalog
+            content={content}
+            highlightedPath={highlightedPath}
+            products={catalogPages.baby?.products}
+            catalogState={catalogPages.baby}
+            onPage={loadCatalogPage}
+            onAddToCart={addToCart}
+            onViewProduct={viewProduct}
+            priceFilter={priceFilters.baby}
+            onPriceFilterChange={changePriceFilter}
+            sortFilter={sortFilters.baby}
+            onSortFilterChange={changeSortFilter}
+            searchFilter={searchFilters.baby}
+            onSearchFilterChange={changeSearchFilter}
+          />
         ) : activePage === 'clothing' ? (
-          <ClothingCatalog content={content} highlightedPath={highlightedPath} />
+          <ClothingCatalog
+            content={content}
+            highlightedPath={highlightedPath}
+            products={catalogPages.clothing?.products}
+            catalogState={catalogPages.clothing}
+            onPage={loadCatalogPage}
+            onAddToCart={addToCart}
+            onViewProduct={viewProduct}
+            priceFilter={priceFilters.clothing}
+            onPriceFilterChange={changePriceFilter}
+            sortFilter={sortFilters.clothing}
+            onSortFilterChange={changeSortFilter}
+            searchFilter={searchFilters.clothing}
+            onSearchFilterChange={changeSearchFilter}
+          />
         ) : (
           <>
         <div {...previewPathProps(['hero'], highlightedPath, 'hero')} style={imageStyle(content.hero.imageUrl)}>
@@ -949,7 +1540,40 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
           </div>
         </footer>
 
-        <button className="floatingCartButton" type="button" aria-label="Checkout cart with 3 items">
+        {isCartOpen ? (
+          <aside className="cartDrawer" aria-label="Shopping cart">
+            <div className="cartDrawerHeader">
+              <h2>Cart</h2>
+              <button type="button" onClick={() => setIsCartOpen(false)} aria-label="Close cart">x</button>
+            </div>
+            {cartItems.length ? (
+              <div className="cartItems">
+                {cartItems.map((item) => (
+                  <article className="cartItem" key={item.squareVariationId}>
+                    <div className="cartItemImage" style={imageStyle(item.imageUrl)} aria-hidden="true" />
+                    <div>
+                      <h3>{item.name}</h3>
+                      <p>{item.price}</p>
+                      <div className="cartQuantity">
+                        <button type="button" onClick={() => updateCartQuantity(item.squareVariationId, item.quantity - 1)}>-</button>
+                        <span>{item.quantity}</span>
+                        <button type="button" onClick={() => updateCartQuantity(item.squareVariationId, item.quantity + 1)}>+</button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="cartEmpty">Your cart is empty.</p>
+            )}
+            {checkoutError ? <p className="cartError">{checkoutError}</p> : null}
+            <button className="checkoutButton" type="button" disabled={!cartItems.length || isCheckingOut} onClick={checkoutCart}>
+              {isCheckingOut ? 'Opening Checkout...' : 'Checkout with Square'}
+            </button>
+          </aside>
+        ) : null}
+
+        <button className="floatingCartButton" type="button" aria-label={`Checkout cart with ${cartCount} items`} onClick={() => setIsCartOpen(true)}>
           <span className="floatingCartIcon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
               <path d="M7 8h10l-.8 11H7.8L7 8Z" />
@@ -957,7 +1581,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             </svg>
           </span>
           <span className="cartButtonText">Cart</span>
-          <span className="cartCount" aria-hidden="true">3</span>
+          <span className="cartCount" aria-hidden="true">{cartCount}</span>
         </button>
       </section>
     </main>
@@ -981,14 +1605,21 @@ function labelFromKey(key) {
     .replace(/^./, (letter) => letter.toUpperCase());
 }
 
-function ContentEditor({ value, path = [], onChange, onFocus }) {
+function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, uploadingPath = '' }) {
   if (Array.isArray(value)) {
     return (
       <div className="adminGroup">
         {value.map((item, index) => (
           <details className="adminDetails" key={`${path.join('.')}-${index}`} open={index === 0}>
             <summary>{item?.name || item?.title || `Item ${index + 1}`}</summary>
-            <ContentEditor value={item} path={[...path, index]} onChange={onChange} onFocus={onFocus} />
+            <ContentEditor
+              value={item}
+              path={[...path, index]}
+              onChange={onChange}
+              onFocus={onFocus}
+              onUploadImage={onUploadImage}
+              uploadingPath={uploadingPath}
+            />
           </details>
         ))}
       </div>
@@ -1007,19 +1638,47 @@ function ContentEditor({ value, path = [], onChange, onFocus }) {
             return (
               <details className="adminDetails" key={[...path, key].join('.')} open={path.length < 1}>
                 <summary>{labelFromKey(key)}</summary>
-                <ContentEditor value={childValue} path={[...path, key]} onChange={onChange} onFocus={onFocus} />
+                <ContentEditor
+                  value={childValue}
+                  path={[...path, key]}
+                  onChange={onChange}
+                  onFocus={onFocus}
+                  onUploadImage={onUploadImage}
+                  uploadingPath={uploadingPath}
+                />
               </details>
             );
           }
 
           const fieldPath = [...path, key];
+          const fieldPathKey = pathKey(fieldPath);
           const isImage = key.toLowerCase().includes('imageurl');
           const isLong = typeof childValue === 'string' && childValue.length > 72;
 
           return (
             <label className="adminField" key={fieldPath.join('.')}>
               <span>{labelFromKey(key)}</span>
-              {isLong ? (
+              {isImage ? (
+                <div className="adminImageField">
+                  <input
+                    type="url"
+                    value={childValue ?? ''}
+                    placeholder="Upload an image or paste a URL"
+                    onFocus={() => onFocus(fieldPath)}
+                    onChange={(event) => onChange(fieldPath, event.target.value)}
+                  />
+                  <label className="adminUploadButton">
+                    {uploadingPath === fieldPathKey ? 'Uploading...' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingPath === fieldPathKey}
+                      onFocus={() => onFocus(fieldPath)}
+                      onChange={(event) => onUploadImage(fieldPath, event.target.files?.[0], event)}
+                    />
+                  </label>
+                </div>
+              ) : isLong ? (
                 <textarea
                   value={childValue ?? ''}
                   rows={4}
@@ -1028,9 +1687,8 @@ function ContentEditor({ value, path = [], onChange, onFocus }) {
                 />
               ) : (
                 <input
-                  type={isImage ? 'url' : 'text'}
+                  type="text"
                   value={childValue ?? ''}
-                  placeholder={isImage ? 'https://example.com/image.jpg' : ''}
                   onFocus={() => onFocus(fieldPath)}
                   onChange={(event) => onChange(fieldPath, event.target.value)}
                 />
@@ -1045,11 +1703,12 @@ function ContentEditor({ value, path = [], onChange, onFocus }) {
   return null;
 }
 
-function AdminPage({ content, setContent }) {
+function AdminPage({ content, setContent, previewContent = content }) {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [token, setToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
   const [error, setError] = useState('');
   const [selectedPath, setSelectedPath] = useState('');
+  const [uploadingPath, setUploadingPath] = useState('');
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -1120,6 +1779,52 @@ function AdminPage({ content, setContent }) {
     }
   };
 
+  const uploadImage = async (path, file, event) => {
+    if (!file) {
+      return;
+    }
+
+    const targetPath = pathKey(path);
+    setSelectedPath(targetPath);
+    setUploadingPath(targetPath);
+    setError('');
+
+    try {
+      const dataBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+        reader.onerror = () => reject(new Error('Unable to read selected image.'));
+        reader.readAsDataURL(file);
+      });
+      const response = await fetch('/api/admin/upload-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type || 'image/jpeg',
+          dataBase64,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.imageUrl) {
+        throw new Error(data.error || 'Image upload failed.');
+      }
+
+      await handleContentChange(path, data.imageUrl);
+    } catch (uploadError) {
+      setError(uploadError.message || 'Image upload failed.');
+    } finally {
+      setUploadingPath('');
+      if (event?.target) {
+        event.target.value = '';
+      }
+    }
+  };
+
   if (!token) {
     return (
       <main className="adminLoginPage">
@@ -1154,13 +1859,19 @@ function AdminPage({ content, setContent }) {
         <div className="adminPanelHeader">
           <div>
             <h1>Content Admin</h1>
-            <p>Edit copy and image URLs. Changes save to this browser.</p>
+            <p>Edit copy and upload images. Changes save to the website content database.</p>
             {selectedPath ? <small>Selected: {selectedPath}</small> : null}
             {error ? <p className="adminError">{error}</p> : null}
           </div>
           <button type="button" onClick={resetContent}>Reset</button>
         </div>
-        <ContentEditor value={content} onChange={handleContentChange} onFocus={(path) => setSelectedPath(pathKey(path))} />
+        <ContentEditor
+          value={content}
+          onChange={handleContentChange}
+          onFocus={(path) => setSelectedPath(pathKey(path))}
+          onUploadImage={uploadImage}
+          uploadingPath={uploadingPath}
+        />
       </aside>
 
       <section className="adminPreview">
@@ -1169,7 +1880,7 @@ function AdminPage({ content, setContent }) {
           <a href="/">Open site</a>
         </div>
         <div className="adminPreviewFrame">
-          <Storefront content={content} preview highlightedPath={selectedPath} />
+          <Storefront content={previewContent} preview highlightedPath={selectedPath} />
         </div>
       </section>
     </main>
@@ -1192,7 +1903,7 @@ function App() {
   }, []);
 
   return isAdminPage ? (
-    <AdminPage content={content} setContent={setContent} />
+    <AdminPage content={content} setContent={setContent} previewContent={content} />
   ) : (
     <Storefront content={content} />
   );

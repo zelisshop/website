@@ -4,7 +4,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "square:categorize": "node scripts/square-categorize-items.js",
+    "square:categorize:apply": "node scripts/square-categorize-items.js --apply"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
