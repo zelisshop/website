@@ -582,34 +582,57 @@ a {
   text-align: center;
 }
 
+.heroCopy::before {
+  content: "";
+  position: absolute;
+  inset: -24px -34px -18px;
+  z-index: -1;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at center, rgba(255, 250, 247, 0.78) 0%, rgba(255, 250, 247, 0.42) 42%, transparent 72%);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
 .heroCopy h1 {
   margin: 0 0 10px;
-  color: rgba(151, 56, 83, 0.82);
+  color: #7c0825;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(54px, 7.1vw, 92px);
   font-weight: 700;
   line-height: 0.88;
   letter-spacing: 0;
+  text-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.86),
+    0 10px 26px rgba(255, 246, 240, 0.72),
+    0 18px 42px rgba(65, 28, 31, 0.28);
 }
 
 .heroCopy p {
   margin: 0 0 34px;
-  color: rgba(57, 53, 52, 0.76);
+  color: #211716;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(19px, 2.35vw, 32px);
   font-weight: 700;
   letter-spacing: 5px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px rgba(255, 246, 240, 0.7),
+    0 14px 34px rgba(65, 28, 31, 0.26);
 }
 
 .cta {
   min-width: 250px;
   padding: 20px 28px;
-  background: #7c0825;
+  border: 1px solid rgba(255, 232, 238, 0.64);
+  background: #6f001d;
   color: #fff;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 1.5px;
-  box-shadow: 0 12px 24px rgba(83, 10, 32, 0.2);
+  box-shadow:
+    0 12px 24px rgba(83, 10, 32, 0.24),
+    0 0 0 6px rgba(255, 248, 245, 0.2);
   transition:
     background 180ms ease,
     box-shadow 180ms ease,
