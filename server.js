@@ -46,7 +46,6 @@ function loadEnvFile() {
 loadEnvFile();
 
 const app = express();
-const sessions = new Map();
 const adminSessionDurationMs = 24 * 60 * 60 * 1000;
 const defaultContent = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'src', 'data', 'content.json'), 'utf8')
@@ -110,6 +109,59 @@ async function getConnection() {
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(value, 'base64url').toString('utf8');
+}
+
+function getSessionSecret() {
+  return process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || 'zelis-dev-session-secret';
+}
+
+function signAdminTokenPayload(payload) {
+  return crypto
+    .createHmac('sha256', getSessionSecret())
+    .update(payload)
+    .digest('base64url');
+}
+
+function createAdminToken(session) {
+  const payload = base64UrlEncode(JSON.stringify(session));
+  const signature = signAdminTokenPayload(payload);
+
+  return `${payload}.${signature}`;
+}
+
+function verifyAdminToken(token) {
+  if (!token || !token.includes('.')) {
+    return null;
+  }
+
+  const [payload, signature] = token.split('.');
+  const expectedSignature = signAdminTokenPayload(payload);
+  const signatureBuffer = Buffer.from(signature || '', 'base64url');
+  const expectedBuffer = Buffer.from(expectedSignature, 'base64url');
+
+  if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+    return null;
+  }
+
+  try {
+    const session = JSON.parse(base64UrlDecode(payload));
+
+    if (!session?.userId || !session?.expiresAt) {
+      return null;
+    }
+
+    return session;
+  } catch {
+    return null;
+  }
 }
 
 function getBucketConfig() {
@@ -800,7 +852,7 @@ async function initDatabase() {
 
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  const session = token ? sessions.get(token) : null;
+  const session = verifyAdminToken(token);
 
   if (!session) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -808,7 +860,6 @@ function requireAuth(req, res, next) {
   }
 
   if (session.expiresAt <= Date.now()) {
-    sessions.delete(token);
     res.status(401).json({ error: 'Session expired.' });
     return;
   }
@@ -834,16 +885,13 @@ app.post('/api/admin/login', async (req, res) => {
     return;
   }
 
-  const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + adminSessionDurationMs;
-
-  for (const [sessionToken, session] of sessions.entries()) {
-    if (session.expiresAt <= Date.now()) {
-      sessions.delete(sessionToken);
-    }
-  }
-
-  sessions.set(token, { userId: rows[0].id, username: rows[0].username, role: rows[0].role, expiresAt });
+  const token = createAdminToken({
+    userId: rows[0].id,
+    username: rows[0].username,
+    role: rows[0].role,
+    expiresAt,
+  });
   res.json({ token, expiresAt, user: rows[0] });
 });
 
