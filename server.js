@@ -117,8 +117,12 @@ function getBucketConfig() {
   const hostParts = endpointUrl.hostname.split('.');
   const bucket = process.env.BUCKET_NAME || hostParts[0];
   const region = process.env.BUCKET_REGION || hostParts[1] || 'syd1';
-  const accessKey = process.env.BUCKET_ACCESS_KEY;
-  const secretKey = process.env.BUCKET_SECRET_KEY || process.env.BUCKET_SECRET_ACCESS_KEY;
+  const accessKey = process.env.BUCKET_ACCESS_KEY
+    || process.env.BUCKET_ACCESS_KEY_ID
+    || process.env.DO_SPACES_KEY;
+  const secretKey = process.env.BUCKET_SECRET_KEY
+    || process.env.BUCKET_SECRET_ACCESS_KEY
+    || process.env.DO_SPACES_SECRET;
 
   return {
     endpoint: endpointUrl.origin,
@@ -161,7 +165,7 @@ async function uploadImageToBucket({ fileName, contentType, dataBase64 }) {
   const bucket = getBucketConfig();
 
   if (!bucket.accessKey || !bucket.secretKey) {
-    throw new Error('Missing BUCKET_ACCESS_KEY or BUCKET_SECRET_KEY environment variable.');
+    throw new Error('Missing DigitalOcean Spaces credentials. Set BUCKET_ACCESS_KEY to the Spaces access key ID and BUCKET_SECRET_KEY to the Spaces secret key.');
   }
 
   if (!contentType?.startsWith('image/')) {

@@ -1701,7 +1701,7 @@ function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, upl
             : labelFromKey(key);
 
           return (
-            <label className="adminField" key={fieldPath.join('.')}>
+            <div className="adminField" key={fieldPath.join('.')}>
               <span>{label}</span>
               {isImage ? (
                 <div className="adminImageField">
@@ -1738,7 +1738,7 @@ function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, upl
                   onChange={(event) => onChange(fieldPath, event.target.value)}
                 />
               )}
-            </label>
+            </div>
           );
         })}
       </div>
@@ -1856,7 +1856,7 @@ function AdminPage({ content, setContent, previewContent = content }) {
       const data = await response.json();
 
       if (!response.ok || !data.imageUrl) {
-        throw new Error(data.error || 'Image upload failed.');
+        throw new Error(data.error || 'Image upload failed. Check DigitalOcean Spaces credentials.');
       }
 
       await handleContentChange(path, data.imageUrl);
