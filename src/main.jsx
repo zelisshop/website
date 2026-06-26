@@ -1668,6 +1668,18 @@ function canvasToBlob(canvas, type, quality) {
   });
 }
 
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.split(',').pop() : result);
+    });
+    reader.addEventListener('error', () => reject(new Error('Unable to prepare image upload.')));
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function prepareImageForUpload(file, path) {
   const target = imageTargetSize(path);
   const bitmap = await createImageBitmap(file);
@@ -1690,11 +1702,12 @@ async function prepareImageForUpload(file, path) {
     ? 'image/png'
     : 'image/jpeg';
   const blob = await canvasToBlob(canvas, outputType, 0.82);
+  const dataBase64 = await blobToBase64(blob);
 
   return {
     fileName: file.name.replace(/\.[^.]+$/, outputType === 'image/jpeg' ? '.jpg' : '.png'),
     contentType: outputType,
-    blob,
+    dataBase64,
   };
 }
 
@@ -1911,6 +1924,8 @@ function AdminPage({ content, setContent, previewContent = content }) {
         body: JSON.stringify({
           fileName: uploadPayload.fileName,
           contentType: uploadPayload.contentType,
+          dataBase64: uploadPayload.dataBase64,
+          contentPath: targetPath,
         }),
       });
       const data = await response.json();
@@ -1920,21 +1935,8 @@ function AdminPage({ content, setContent, previewContent = content }) {
         return;
       }
 
-      if (!response.ok || !data.uploadUrl || !data.imageUrl) {
-        throw new Error(data.error || 'Image upload setup failed. Check DigitalOcean Spaces credentials.');
-      }
-
-      const uploadResponse = await fetch(data.uploadUrl, {
-        method: data.method || 'PUT',
-        headers: {
-          ...(data.headers || {}),
-          'Content-Type': uploadPayload.contentType,
-        },
-        body: uploadPayload.blob,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Image upload failed (${uploadResponse.status}). Check Spaces CORS and key permissions.`);
+      if (!response.ok || !data.imageUrl) {
+        throw new Error(data.error || 'Image upload failed. Check DigitalOcean Spaces credentials.');
       }
 
       await handleContentChange(path, data.imageUrl);

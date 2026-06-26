@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import aws4 from 'aws4';
 import express from 'express';
 import mysql from 'mysql2/promise';
 
@@ -76,6 +77,44 @@ const categoryImageClasses = {
   clothing: ['clothingSilkBlouse', 'clothingTrousers', 'clothingCashmere', 'clothingBlazer', 'clothingSlipDress', 'clothingTrench'],
 };
 const imageAvailabilityCache = new Map();
+
+const uploadImageMetadataJson = express.json({ limit: '10mb' });
+
+function parseUploadImageMetadata(req, res, next) {
+  uploadImageMetadataJson(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    const status = error.type === 'entity.too.large' ? 413 : 400;
+    res.status(status).json({
+      error: status === 413
+        ? 'Prepared image upload is too large. Try a smaller image.'
+        : 'Invalid image upload payload.',
+    });
+  });
+}
+
+app.post('/api/admin/upload-image', parseUploadImageMetadata, requireAuth, (req, res) => {
+  const startedAt = Date.now();
+
+  uploadImageToBucket(req.body || {})
+    .then(async (uploadResult) => {
+      await insertUploadedImage({
+        ...uploadResult,
+        contentPath: req.body?.contentPath || '',
+        uploadedBy: req.adminSession?.userId || null,
+      });
+      console.log(`Uploaded admin image in ${Date.now() - startedAt}ms to ${uploadResult.objectKey}`);
+      res.json({ imageUrl: uploadResult.imageUrl });
+    })
+    .catch((error) => {
+      console.error(`Failed to upload admin image after ${Date.now() - startedAt}ms`);
+      console.error(error);
+      res.status(502).json({ error: error.message || 'Unable to upload image.' });
+    });
+});
 
 app.use(express.json({ limit: '8mb' }));
 
@@ -186,23 +225,8 @@ function getBucketConfig() {
     region,
     accessKey,
     secretKey,
-    publicBaseUrl: process.env.BUCKET_PUBLIC_URL || endpointUrl.origin,
+    publicBaseUrl: process.env.BUCKET_CDN_URL || process.env.BUCKET_PUBLIC_URL || endpointUrl.origin,
   };
-}
-
-function hmac(key, value, encoding) {
-  return crypto.createHmac('sha256', key).update(value).digest(encoding);
-}
-
-function sha256(value, encoding = 'hex') {
-  return crypto.createHash('sha256').update(value).digest(encoding);
-}
-
-function getSpacesSigningKey(secretKey, dateStamp, region) {
-  const dateKey = hmac(`AWS4${secretKey}`, dateStamp);
-  const regionKey = hmac(dateKey, region);
-  const serviceKey = hmac(regionKey, 's3');
-  return hmac(serviceKey, 'aws4_request');
 }
 
 function cleanUploadFileName(fileName) {
@@ -234,54 +258,45 @@ async function uploadImageToBucket({ fileName, contentType, dataBase64 }) {
   }
 
   const objectKey = `website-content/${cleanUploadFileName(fileName)}`;
-  const objectPath = `/${objectKey}`;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = sha256(fileBuffer);
-  const canonicalHeaders = [
-    `host:${bucket.host}`,
-    'x-amz-acl:public-read',
-    `x-amz-content-sha256:${payloadHash}`,
-    `x-amz-date:${amzDate}`,
-  ].join('\n');
-  const signedHeaders = 'host;x-amz-acl;x-amz-content-sha256;x-amz-date';
-  const canonicalRequest = [
-    'PUT',
-    objectPath,
-    '',
-    `${canonicalHeaders}\n`,
-    signedHeaders,
-    payloadHash,
-  ].join('\n');
-  const credentialScope = `${dateStamp}/${bucket.region}/s3/aws4_request`;
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    amzDate,
-    credentialScope,
-    sha256(canonicalRequest),
-  ].join('\n');
-  const signingKey = getSpacesSigningKey(bucket.secretKey, dateStamp, bucket.region);
-  const signature = hmac(signingKey, stringToSign, 'hex');
-  const authorization = [
-    `AWS4-HMAC-SHA256 Credential=${bucket.accessKey}/${credentialScope}`,
-    `SignedHeaders=${signedHeaders}`,
-    `Signature=${signature}`,
-  ].join(', ');
+  const endpointUrl = new URL(bucket.endpoint);
+  const virtualHostPrefix = `${bucket.bucket}.`;
+  const usesVirtualHostEndpoint = endpointUrl.hostname.startsWith(virtualHostPrefix);
+  const uploadHost = usesVirtualHostEndpoint
+    ? endpointUrl.hostname.slice(virtualHostPrefix.length)
+    : bucket.host;
+  const uploadEndpoint = usesVirtualHostEndpoint
+    ? `${endpointUrl.protocol}//${uploadHost}`
+    : bucket.endpoint;
+  const objectPath = usesVirtualHostEndpoint
+    ? `/${bucket.bucket}/${objectKey}`
+    : `/${objectKey}`;
+  const signedRequest = aws4.sign(
+    {
+      host: uploadHost,
+      path: objectPath,
+      service: 's3',
+      region: bucket.region,
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+        'x-amz-acl': 'public-read',
+      },
+      body: fileBuffer,
+    },
+    {
+      accessKeyId: bucket.accessKey,
+      secretAccessKey: bucket.secretKey,
+    }
+  );
+  const uploadHeaders = { ...signedRequest.headers };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 18000);
   let response;
 
   try {
-    response = await fetch(`${bucket.endpoint}${objectPath}`, {
+    response = await fetch(`${uploadEndpoint}${objectPath}`, {
       method: 'PUT',
-      headers: {
-        Authorization: authorization,
-        'Content-Type': contentType,
-        'x-amz-acl': 'public-read',
-        'x-amz-content-sha256': payloadHash,
-        'x-amz-date': amzDate,
-      },
+      headers: uploadHeaders,
       body: fileBuffer,
       signal: controller.signal,
     });
@@ -299,62 +314,45 @@ async function uploadImageToBucket({ fileName, contentType, dataBase64 }) {
     throw new Error(`Bucket upload failed (${response.status}): ${await response.text()}`);
   }
 
-  return `${bucket.publicBaseUrl}/${objectKey}`;
+  return {
+    imageUrl: `${bucket.publicBaseUrl}/${objectKey}`,
+    objectKey,
+    fileName: path.basename(objectKey),
+    contentType,
+    fileSize: fileBuffer.length,
+  };
 }
 
-function createBucketUploadTarget({ fileName, contentType }) {
-  const bucket = getBucketConfig();
+async function insertUploadedImage({ fileName, objectKey, imageUrl, contentType, fileSize, contentPath, uploadedBy }) {
+  const db = await getConnection();
 
-  if (!bucket.accessKey || !bucket.secretKey) {
-    throw new Error('Missing DigitalOcean Spaces credentials. Set BUCKET_ACCESS_KEY to the Spaces access key ID and BUCKET_SECRET_KEY to the Spaces secret key.');
+  try {
+    await db.execute(
+      `
+        INSERT INTO uploaded_images (
+          file_name,
+          object_key,
+          image_url,
+          content_type,
+          file_size,
+          content_path,
+          uploaded_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        fileName,
+        objectKey,
+        imageUrl,
+        contentType,
+        fileSize,
+        contentPath || null,
+        uploadedBy || null,
+      ]
+    );
+  } finally {
+    await db.end();
   }
-
-  if (!contentType?.startsWith('image/')) {
-    throw new Error('Only image uploads are supported.');
-  }
-
-  const objectKey = `website-content/${cleanUploadFileName(fileName)}`;
-  const objectPath = `/${objectKey}`;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-  const credentialScope = `${dateStamp}/${bucket.region}/s3/aws4_request`;
-  const signedHeaders = 'host';
-  const expires = '900';
-  const query = new URLSearchParams({
-    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-    'X-Amz-Credential': `${bucket.accessKey}/${credentialScope}`,
-    'X-Amz-Date': amzDate,
-    'X-Amz-Expires': expires,
-    'X-Amz-SignedHeaders': signedHeaders,
-  });
-  const canonicalRequest = [
-    'PUT',
-    objectPath,
-    query.toString(),
-    `host:${bucket.host}\n`,
-    signedHeaders,
-    'UNSIGNED-PAYLOAD',
-  ].join('\n');
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    amzDate,
-    credentialScope,
-    sha256(canonicalRequest),
-  ].join('\n');
-  const signingKey = getSpacesSigningKey(bucket.secretKey, dateStamp, bucket.region);
-  const signature = hmac(signingKey, stringToSign, 'hex');
-
-  query.set('X-Amz-Signature', signature);
-
-  return {
-    uploadUrl: `${bucket.endpoint}${objectPath}?${query.toString()}`,
-    imageUrl: `${bucket.publicBaseUrl}/${objectKey}`,
-    method: 'PUT',
-    headers: {
-      'Content-Type': contentType,
-    },
-  };
 }
 
 function classifyCategory(categoryName) {
@@ -886,6 +884,22 @@ async function initDatabase() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS uploaded_images (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      file_name VARCHAR(255) NOT NULL,
+      object_key VARCHAR(512) NOT NULL,
+      image_url VARCHAR(1024) NOT NULL,
+      content_type VARCHAR(100) NOT NULL,
+      file_size INT NOT NULL DEFAULT 0,
+      content_path VARCHAR(255),
+      uploaded_by INT,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_uploaded_images_created_at (created_at),
+      INDEX idx_uploaded_images_content_path (content_path)
+    )
+  `);
+
   await db.execute(
     `
       INSERT INTO users (username, password, role)
@@ -921,6 +935,7 @@ function requireAuth(req, res, next) {
     return;
   }
 
+  req.adminSession = session;
   next();
 }
 
@@ -950,17 +965,6 @@ app.post('/api/admin/login', async (req, res) => {
     expiresAt,
   });
   res.json({ token, expiresAt, user: rows[0] });
-});
-
-app.post('/api/admin/upload-image', requireAuth, async (req, res) => {
-  try {
-    const uploadTarget = createBucketUploadTarget(req.body || {});
-    res.json(uploadTarget);
-  } catch (error) {
-    console.error('Failed to create admin image upload URL');
-    console.error(error);
-    res.status(502).json({ error: error.message || 'Unable to create image upload URL.' });
-  }
 });
 
 app.get('/api/content', async (_req, res) => {
