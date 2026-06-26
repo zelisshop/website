@@ -1755,6 +1755,12 @@ function AdminPage({ content, setContent, previewContent = content }) {
   const [selectedPath, setSelectedPath] = useState('');
   const [uploadingPath, setUploadingPath] = useState('');
 
+  const expireAdminSession = () => {
+    setToken('');
+    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    setError('Admin session expired. Please login again.');
+  };
+
   const handleLogin = async (event) => {
     event.preventDefault();
     try {
@@ -1795,6 +1801,11 @@ function AdminPage({ content, setContent, previewContent = content }) {
           body: JSON.stringify(nextContent),
         });
 
+        if (response.status === 401) {
+          expireAdminSession();
+          return;
+        }
+
         if (!response.ok) {
           setError('Content changed locally, but database save failed.');
         }
@@ -1810,7 +1821,7 @@ function AdminPage({ content, setContent, previewContent = content }) {
 
     if (token) {
       try {
-        await fetch('/api/content', {
+        const response = await fetch('/api/content', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -1818,6 +1829,10 @@ function AdminPage({ content, setContent, previewContent = content }) {
           },
           body: JSON.stringify(defaultContent),
         });
+
+        if (response.status === 401) {
+          expireAdminSession();
+        }
       } catch {
         setError('Content reset locally, but database save failed.');
       }
@@ -1854,6 +1869,11 @@ function AdminPage({ content, setContent, previewContent = content }) {
         }),
       });
       const data = await response.json();
+
+      if (response.status === 401) {
+        expireAdminSession();
+        return;
+      }
 
       if (!response.ok || !data.imageUrl) {
         throw new Error(data.error || 'Image upload failed. Check DigitalOcean Spaces credentials.');
