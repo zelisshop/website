@@ -1604,11 +1604,14 @@ app.post('/api/checkout', async (req, res) => {
     const paymentLinkBody = {
       order,
       checkout_options: checkoutOptions,
-      pre_populated_data: {
-        buyer_email: customerEmail,
-      },
       payment_note: fulfillmentType === 'pickup' ? 'Self pickup' : 'Delivery',
     };
+
+    if (fulfillmentType === 'delivery') {
+      paymentLinkBody.pre_populated_data = {
+        buyer_email: customerEmail,
+      };
+    }
     let data;
 
     try {
