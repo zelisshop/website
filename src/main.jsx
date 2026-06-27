@@ -1076,7 +1076,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
   const checkoutCart = async () => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
-      setCheckoutError('Enter a valid email address for your receipt.');
+      setCheckoutError('Enter a valid email address for your Square receipt.');
       return;
     }
 
@@ -1689,7 +1689,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
               <p className="cartEmpty">Your cart is empty.</p>
             )}
             <label className="cartEmailField">
-              <span>Email for receipt</span>
+              <span>Email for Square receipt</span>
               <input
                 type="email"
                 value={customerEmail}

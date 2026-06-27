@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
 import aws4 from 'aws4';
 import express from 'express';
@@ -1119,22 +1118,6 @@ function formatLocalOrderNumber(orderId) {
   return `ZS-${dateStamp}-${String(orderId).padStart(6, '0')}`;
 }
 
-function escapeEmailHeader(value) {
-  return String(value || '').replace(/[\r\n]+/g, ' ').trim();
-}
-
-function formatReceiptItems(items = []) {
-  return items
-    .map((item) => {
-      const quantity = Number(item.quantity || 1);
-      const name = item.name || item.squareVariationId || 'Item';
-      const price = item.price ? ` - ${item.price}` : '';
-
-      return `- ${quantity} x ${name}${price}`;
-    })
-    .join('\n');
-}
-
 async function createPendingOrder({ customerEmail, fulfillmentType, items }) {
   const db = await getConnection();
 
@@ -1251,158 +1234,6 @@ async function markOrderPaid(orderId, { squareOrderId = '', squarePaymentId = ''
   }
 }
 
-async function markOrderReceiptSent(orderId) {
-  const db = await getConnection();
-
-  try {
-    await db.execute(
-      'UPDATE orders SET receipt_sent_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [orderId]
-    );
-  } finally {
-    await db.end();
-  }
-}
-
-function getSmtpConfig() {
-  return {
-    host: process.env.SMTP_HOST || '',
-    port: Number(process.env.SMTP_PORT || 465),
-    user: process.env.SMTP_USER || '',
-    password: process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '',
-    from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
-  };
-}
-
-function readSmtpResponse(socket) {
-  return new Promise((resolve, reject) => {
-    let buffer = '';
-
-    const cleanup = () => {
-      socket.off('data', onData);
-      socket.off('error', onError);
-    };
-    const onError = (error) => {
-      cleanup();
-      reject(error);
-    };
-    const onData = (chunk) => {
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split(/\r?\n/).filter(Boolean);
-      const lastLine = lines[lines.length - 1] || '';
-
-      if (/^\d{3} /.test(lastLine)) {
-        cleanup();
-        resolve(buffer);
-      }
-    };
-
-    socket.on('data', onData);
-    socket.on('error', onError);
-  });
-}
-
-async function sendSmtpCommand(socket, command, expectedCodes) {
-  if (command) {
-    socket.write(`${command}\r\n`);
-  }
-
-  const response = await readSmtpResponse(socket);
-  const code = Number(response.slice(0, 3));
-  const acceptedCodes = Array.isArray(expectedCodes) ? expectedCodes : [expectedCodes];
-
-  if (!acceptedCodes.includes(code)) {
-    throw new Error(`SMTP command failed (${code}): ${response.trim()}`);
-  }
-
-  return response;
-}
-
-async function sendEmail({ to, subject, text }) {
-  const smtp = getSmtpConfig();
-
-  if (!smtp.host || !smtp.user || !smtp.password || !smtp.from) {
-    console.warn('SMTP email is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and SMTP_FROM.');
-    return false;
-  }
-
-  const socket = tls.connect({
-    host: smtp.host,
-    port: smtp.port,
-    servername: smtp.host,
-  });
-
-  await new Promise((resolve, reject) => {
-    socket.once('secureConnect', resolve);
-    socket.once('error', reject);
-  });
-
-  try {
-    await sendSmtpCommand(socket, '', 220);
-    await sendSmtpCommand(socket, `EHLO ${smtp.host}`, 250);
-    await sendSmtpCommand(socket, 'AUTH LOGIN', 334);
-    await sendSmtpCommand(socket, Buffer.from(smtp.user).toString('base64'), 334);
-    await sendSmtpCommand(socket, Buffer.from(smtp.password).toString('base64'), 235);
-    await sendSmtpCommand(socket, `MAIL FROM:<${smtp.from}>`, 250);
-    await sendSmtpCommand(socket, `RCPT TO:<${to}>`, [250, 251]);
-    await sendSmtpCommand(socket, 'DATA', 354);
-
-    const message = [
-      `From: ${escapeEmailHeader(process.env.STORE_NAME || 'Zelis Shop')} <${smtp.from}>`,
-      `To: <${to}>`,
-      `Subject: ${escapeEmailHeader(subject)}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      text.replace(/\r?\n/g, '\r\n'),
-      '.',
-    ].join('\r\n');
-
-    await sendSmtpCommand(socket, message, 250);
-    await sendSmtpCommand(socket, 'QUIT', 221);
-    return true;
-  } finally {
-    socket.end();
-  }
-}
-
-async function sendOrderReceiptEmail(order) {
-  if (!order?.customer_email || order.receipt_sent_at) {
-    return false;
-  }
-
-  const items = typeof order.items_json === 'string'
-    ? JSON.parse(order.items_json || '[]')
-    : order.items_json || [];
-  const orderNumber = order.local_order_number || `ZS-${order.id}`;
-  const text = [
-    'Thank you for your order from Zelis Shop.',
-    '',
-    `Order reference: ${orderNumber}`,
-    `Payment status: Paid`,
-    `Fulfillment: ${order.fulfillment_type === 'pickup' ? 'Self pickup' : 'Delivery'}`,
-    '',
-    'Items:',
-    formatReceiptItems(items),
-    '',
-    'Please keep this email. If you contact us about your order, include the order reference above.',
-    '',
-    'Zelis Shop',
-  ].join('\n');
-
-  const sent = await sendEmail({
-    to: order.customer_email,
-    subject: `Zelis Shop order confirmation ${orderNumber}`,
-    text,
-  });
-
-  if (sent) {
-    await markOrderReceiptSent(order.id);
-  }
-
-  return sent;
-}
-
 function getWebhookNotificationUrl(req) {
   return process.env.SQUARE_WEBHOOK_NOTIFICATION_URL
     || `${req.protocol}://${req.get('host')}${req.originalUrl}`;
@@ -1461,9 +1292,6 @@ async function handleSquareWebhookEvent(event) {
     squarePaymentId: payment.id || '',
     paymentStatus: payment.status,
   });
-
-  const paidOrder = await getOrderById(order.id);
-  await sendOrderReceiptEmail(paidOrder);
 }
 
 async function initDatabase() {
@@ -1502,7 +1330,6 @@ async function initDatabase() {
     ['square_checkout_url', 'VARCHAR(1024)'],
     ['fulfillment_type', 'VARCHAR(32)'],
     ['paid_at', 'TIMESTAMP NULL'],
-    ['receipt_sent_at', 'TIMESTAMP NULL'],
     ['notes', 'TEXT'],
   ];
   const [existingOrderColumns] = await db.execute('SHOW COLUMNS FROM orders');
@@ -1780,6 +1607,9 @@ app.post('/api/checkout', async (req, res) => {
         idempotency_key: crypto.randomUUID(),
         order,
         checkout_options: checkoutOptions,
+        pre_populated_data: {
+          buyer_email: customerEmail,
+        },
         payment_note: fulfillmentType === 'pickup' ? 'Self pickup' : 'Delivery',
       },
     });
