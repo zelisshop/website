@@ -1307,26 +1307,6 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             <a className={activePage === 'clothing' ? 'active' : undefined} href="#clothing-catalog" onClick={navigateTo('clothing')}>{content.site.nav.clothing}</a>
           </nav>
 
-          <div className="navActions" aria-label="Shop actions">
-            <Icon label="Search">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="6.2" />
-                <path d="m16 16 4 4" />
-              </svg>
-            </Icon>
-            <Icon label="Cart">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7 8h10l-.8 11H7.8L7 8Z" />
-                <path d="M9 8a3 3 0 0 1 6 0" />
-              </svg>
-            </Icon>
-            <Icon label="Account">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="8" r="3" />
-                <path d="M6.5 20a5.5 5.5 0 0 1 11 0" />
-              </svg>
-            </Icon>
-          </div>
         </header>
 
         {activePage === 'product' ? (
