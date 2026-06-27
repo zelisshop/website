@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
 import aws4 from 'aws4';
 import express from 'express';
@@ -118,6 +119,33 @@ app.post('/api/admin/upload-image', parseUploadImageMetadata, requireAuth, (req,
       console.error(error);
       res.status(502).json({ error: error.message || 'Unable to upload image.' });
     });
+});
+
+app.post('/api/square/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body || '');
+
+  if (!verifySquareWebhookSignature(req, rawBody)) {
+    res.status(401).json({ error: 'Invalid webhook signature.' });
+    return;
+  }
+
+  let event;
+
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    res.status(400).json({ error: 'Invalid webhook payload.' });
+    return;
+  }
+
+  try {
+    await handleSquareWebhookEvent(event);
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Failed to handle Square webhook');
+    console.error(error);
+    res.status(500).json({ error: 'Webhook handling failed.' });
+  }
 });
 
 app.use(express.json({ limit: '8mb' }));
@@ -1082,6 +1110,362 @@ async function getSquareCatalogProducts() {
   return { configured: true, products: groupedProducts };
 }
 
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+function formatLocalOrderNumber(orderId) {
+  const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return `ZS-${dateStamp}-${String(orderId).padStart(6, '0')}`;
+}
+
+function escapeEmailHeader(value) {
+  return String(value || '').replace(/[\r\n]+/g, ' ').trim();
+}
+
+function formatReceiptItems(items = []) {
+  return items
+    .map((item) => {
+      const quantity = Number(item.quantity || 1);
+      const name = item.name || item.squareVariationId || 'Item';
+      const price = item.price ? ` - ${item.price}` : '';
+
+      return `- ${quantity} x ${name}${price}`;
+    })
+    .join('\n');
+}
+
+async function createPendingOrder({ customerEmail, fulfillmentType, items }) {
+  const db = await getConnection();
+
+  try {
+    const [result] = await db.execute(
+      `
+        INSERT INTO orders (customer_email, status, fulfillment_type, items_json)
+        VALUES (?, 'pending_payment', ?, CAST(? AS JSON))
+      `,
+      [customerEmail, fulfillmentType, JSON.stringify(items)]
+    );
+    const localOrderNumber = formatLocalOrderNumber(result.insertId);
+
+    await db.execute(
+      'UPDATE orders SET local_order_number = ? WHERE id = ?',
+      [localOrderNumber, result.insertId]
+    );
+
+    return {
+      id: result.insertId,
+      localOrderNumber,
+    };
+  } finally {
+    await db.end();
+  }
+}
+
+async function updateCheckoutOrderReferences(orderId, { squareOrderId = '', paymentLinkId = '', checkoutUrl = '' }) {
+  const db = await getConnection();
+
+  try {
+    await db.execute(
+      `
+        UPDATE orders
+        SET square_order_id = ?, square_payment_link_id = ?, square_checkout_url = ?, status = 'checkout_created'
+        WHERE id = ?
+      `,
+      [squareOrderId, paymentLinkId, checkoutUrl, orderId]
+    );
+  } finally {
+    await db.end();
+  }
+}
+
+async function markCheckoutOrderFailed(orderId, errorMessage) {
+  const db = await getConnection();
+
+  try {
+    await db.execute(
+      'UPDATE orders SET status = ?, notes = ? WHERE id = ?',
+      ['checkout_failed', String(errorMessage || '').slice(0, 1000), orderId]
+    );
+  } finally {
+    await db.end();
+  }
+}
+
+async function getOrderBySquareOrderId(squareOrderId) {
+  if (!squareOrderId) {
+    return null;
+  }
+
+  const db = await getConnection();
+
+  try {
+    const [rows] = await db.execute(
+      'SELECT * FROM orders WHERE square_order_id = ? LIMIT 1',
+      [squareOrderId]
+    );
+
+    return rows[0] || null;
+  } finally {
+    await db.end();
+  }
+}
+
+async function getOrderById(orderId) {
+  if (!orderId) {
+    return null;
+  }
+
+  const db = await getConnection();
+
+  try {
+    const [rows] = await db.execute(
+      'SELECT * FROM orders WHERE id = ? LIMIT 1',
+      [orderId]
+    );
+
+    return rows[0] || null;
+  } finally {
+    await db.end();
+  }
+}
+
+async function markOrderPaid(orderId, { squareOrderId = '', squarePaymentId = '', paymentStatus = 'COMPLETED' }) {
+  const db = await getConnection();
+
+  try {
+    await db.execute(
+      `
+        UPDATE orders
+        SET status = 'paid',
+            square_order_id = COALESCE(NULLIF(?, ''), square_order_id),
+            square_payment_id = COALESCE(NULLIF(?, ''), square_payment_id),
+            square_payment_status = ?,
+            paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP)
+        WHERE id = ?
+      `,
+      [squareOrderId, squarePaymentId, paymentStatus, orderId]
+    );
+  } finally {
+    await db.end();
+  }
+}
+
+async function markOrderReceiptSent(orderId) {
+  const db = await getConnection();
+
+  try {
+    await db.execute(
+      'UPDATE orders SET receipt_sent_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [orderId]
+    );
+  } finally {
+    await db.end();
+  }
+}
+
+function getSmtpConfig() {
+  return {
+    host: process.env.SMTP_HOST || '',
+    port: Number(process.env.SMTP_PORT || 465),
+    user: process.env.SMTP_USER || '',
+    password: process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+  };
+}
+
+function readSmtpResponse(socket) {
+  return new Promise((resolve, reject) => {
+    let buffer = '';
+
+    const cleanup = () => {
+      socket.off('data', onData);
+      socket.off('error', onError);
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onData = (chunk) => {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split(/\r?\n/).filter(Boolean);
+      const lastLine = lines[lines.length - 1] || '';
+
+      if (/^\d{3} /.test(lastLine)) {
+        cleanup();
+        resolve(buffer);
+      }
+    };
+
+    socket.on('data', onData);
+    socket.on('error', onError);
+  });
+}
+
+async function sendSmtpCommand(socket, command, expectedCodes) {
+  if (command) {
+    socket.write(`${command}\r\n`);
+  }
+
+  const response = await readSmtpResponse(socket);
+  const code = Number(response.slice(0, 3));
+  const acceptedCodes = Array.isArray(expectedCodes) ? expectedCodes : [expectedCodes];
+
+  if (!acceptedCodes.includes(code)) {
+    throw new Error(`SMTP command failed (${code}): ${response.trim()}`);
+  }
+
+  return response;
+}
+
+async function sendEmail({ to, subject, text }) {
+  const smtp = getSmtpConfig();
+
+  if (!smtp.host || !smtp.user || !smtp.password || !smtp.from) {
+    console.warn('SMTP email is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and SMTP_FROM.');
+    return false;
+  }
+
+  const socket = tls.connect({
+    host: smtp.host,
+    port: smtp.port,
+    servername: smtp.host,
+  });
+
+  await new Promise((resolve, reject) => {
+    socket.once('secureConnect', resolve);
+    socket.once('error', reject);
+  });
+
+  try {
+    await sendSmtpCommand(socket, '', 220);
+    await sendSmtpCommand(socket, `EHLO ${smtp.host}`, 250);
+    await sendSmtpCommand(socket, 'AUTH LOGIN', 334);
+    await sendSmtpCommand(socket, Buffer.from(smtp.user).toString('base64'), 334);
+    await sendSmtpCommand(socket, Buffer.from(smtp.password).toString('base64'), 235);
+    await sendSmtpCommand(socket, `MAIL FROM:<${smtp.from}>`, 250);
+    await sendSmtpCommand(socket, `RCPT TO:<${to}>`, [250, 251]);
+    await sendSmtpCommand(socket, 'DATA', 354);
+
+    const message = [
+      `From: ${escapeEmailHeader(process.env.STORE_NAME || 'Zelis Shop')} <${smtp.from}>`,
+      `To: <${to}>`,
+      `Subject: ${escapeEmailHeader(subject)}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      '',
+      text.replace(/\r?\n/g, '\r\n'),
+      '.',
+    ].join('\r\n');
+
+    await sendSmtpCommand(socket, message, 250);
+    await sendSmtpCommand(socket, 'QUIT', 221);
+    return true;
+  } finally {
+    socket.end();
+  }
+}
+
+async function sendOrderReceiptEmail(order) {
+  if (!order?.customer_email || order.receipt_sent_at) {
+    return false;
+  }
+
+  const items = typeof order.items_json === 'string'
+    ? JSON.parse(order.items_json || '[]')
+    : order.items_json || [];
+  const orderNumber = order.local_order_number || `ZS-${order.id}`;
+  const text = [
+    'Thank you for your order from Zelis Shop.',
+    '',
+    `Order reference: ${orderNumber}`,
+    `Payment status: Paid`,
+    `Fulfillment: ${order.fulfillment_type === 'pickup' ? 'Self pickup' : 'Delivery'}`,
+    '',
+    'Items:',
+    formatReceiptItems(items),
+    '',
+    'Please keep this email. If you contact us about your order, include the order reference above.',
+    '',
+    'Zelis Shop',
+  ].join('\n');
+
+  const sent = await sendEmail({
+    to: order.customer_email,
+    subject: `Zelis Shop order confirmation ${orderNumber}`,
+    text,
+  });
+
+  if (sent) {
+    await markOrderReceiptSent(order.id);
+  }
+
+  return sent;
+}
+
+function getWebhookNotificationUrl(req) {
+  return process.env.SQUARE_WEBHOOK_NOTIFICATION_URL
+    || `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+}
+
+function verifySquareWebhookSignature(req, rawBody) {
+  const signatureKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+
+  if (!signatureKey) {
+    console.warn('SQUARE_WEBHOOK_SIGNATURE_KEY is not set; accepting Square webhook without signature verification.');
+    return true;
+  }
+
+  const signature = req.get('x-square-hmacsha256-signature') || '';
+  const payload = `${getWebhookNotificationUrl(req)}${rawBody}`;
+  const expectedSignature = crypto
+    .createHmac('sha256', signatureKey)
+    .update(payload)
+    .digest('base64');
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  return signatureBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+}
+
+function extractSquarePayment(event) {
+  return event?.data?.object?.payment
+    || event?.data?.object?.payments?.[0]
+    || null;
+}
+
+async function handleSquareWebhookEvent(event) {
+  const payment = extractSquarePayment(event);
+
+  if (!payment || payment.status !== 'COMPLETED' || !payment.order_id) {
+    return;
+  }
+
+  let order = await getOrderBySquareOrderId(payment.order_id);
+
+  if (!order) {
+    const squareOrder = await squareRequest(`/v2/orders/${encodeURIComponent(payment.order_id)}`);
+    const localOrderId = squareOrder?.order?.metadata?.zelis_order_id;
+
+    order = await getOrderById(localOrderId);
+  }
+
+  if (!order) {
+    console.warn(`No local order found for Square order ${payment.order_id}.`);
+    return;
+  }
+
+  await markOrderPaid(order.id, {
+    squareOrderId: payment.order_id,
+    squarePaymentId: payment.id || '',
+    paymentStatus: payment.status,
+  });
+
+  const paidOrder = await getOrderById(order.id);
+  await sendOrderReceiptEmail(paidOrder);
+}
+
 async function initDatabase() {
   const db = await getConnection();
 
@@ -1108,6 +1492,41 @@ async function initDatabase() {
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+
+  const orderColumns = [
+    ['local_order_number', 'VARCHAR(64)'],
+    ['square_order_id', 'VARCHAR(191)'],
+    ['square_payment_id', 'VARCHAR(191)'],
+    ['square_payment_link_id', 'VARCHAR(191)'],
+    ['square_payment_status', 'VARCHAR(64)'],
+    ['square_checkout_url', 'VARCHAR(1024)'],
+    ['fulfillment_type', 'VARCHAR(32)'],
+    ['paid_at', 'TIMESTAMP NULL'],
+    ['receipt_sent_at', 'TIMESTAMP NULL'],
+    ['notes', 'TEXT'],
+  ];
+  const [existingOrderColumns] = await db.execute('SHOW COLUMNS FROM orders');
+  const existingOrderColumnNames = new Set(existingOrderColumns.map((column) => column.Field));
+
+  for (const [column, definition] of orderColumns) {
+    if (!existingOrderColumnNames.has(column)) {
+      await db.execute(`ALTER TABLE orders ADD COLUMN ${column} ${definition}`);
+    }
+  }
+
+  const ensureOrderIndex = async (indexName, columnName) => {
+    const [indexes] = await db.execute(
+      'SHOW INDEX FROM orders WHERE Key_name = ?',
+      [indexName]
+    );
+
+    if (!indexes.length) {
+      await db.execute(`CREATE INDEX ${indexName} ON orders (${columnName})`);
+    }
+  };
+
+  await ensureOrderIndex('idx_orders_local_order_number', 'local_order_number');
+  await ensureOrderIndex('idx_orders_square_order_id', 'square_order_id');
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS site_content (
@@ -1288,8 +1707,11 @@ app.get('/api/products/:category', async (req, res) => {
 });
 
 app.post('/api/checkout', async (req, res) => {
+  let pendingOrder = null;
+
   try {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const customerEmail = String(req.body?.customerEmail || '').trim().toLowerCase();
     const fulfillmentType = req.body?.fulfillmentType === 'pickup' ? 'pickup' : 'delivery';
     const lineItems = items
       .map((item) => ({
@@ -1297,11 +1719,30 @@ app.post('/api/checkout', async (req, res) => {
         quantity: String(Math.max(1, Number(item.quantity || 1))),
       }))
       .filter((item) => item.catalog_object_id);
+    const receiptItems = items
+      .map((item) => ({
+        squareVariationId: String(item.squareVariationId || ''),
+        name: String(item.name || 'Item').slice(0, 255),
+        price: String(item.price || '').slice(0, 64),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+      }))
+      .filter((item) => item.squareVariationId);
 
     if (!lineItems.length) {
       res.status(400).json({ error: 'Cart is empty.' });
       return;
     }
+
+    if (!isValidEmail(customerEmail)) {
+      res.status(400).json({ error: 'Enter a valid email address for your receipt.' });
+      return;
+    }
+
+    pendingOrder = await createPendingOrder({
+      customerEmail,
+      fulfillmentType,
+      items: receiptItems,
+    });
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const checkoutOptions = {
@@ -1312,6 +1753,8 @@ app.post('/api/checkout', async (req, res) => {
       line_items: lineItems,
       metadata: {
         fulfillment_type: fulfillmentType,
+        zelis_order_id: String(pendingOrder.id),
+        zelis_order_number: pendingOrder.localOrderNumber,
       },
     };
 
@@ -1342,16 +1785,31 @@ app.post('/api/checkout', async (req, res) => {
     });
 
     const checkoutUrl = data?.payment_link?.url || data?.payment_link?.long_url;
+    const squareOrderId = data?.payment_link?.order_id || data?.related_resources?.orders?.[0]?.id || '';
+    const paymentLinkId = data?.payment_link?.id || '';
 
     if (!checkoutUrl) {
+      await markCheckoutOrderFailed(pendingOrder.id, 'Square did not return a checkout URL.');
       res.status(502).json({ error: 'Square did not return a checkout URL.' });
       return;
     }
 
-    res.json({ checkoutUrl });
+    await updateCheckoutOrderReferences(pendingOrder.id, {
+      squareOrderId,
+      paymentLinkId,
+      checkoutUrl,
+    });
+
+    res.json({
+      checkoutUrl,
+      orderReference: pendingOrder.localOrderNumber,
+    });
   } catch (error) {
     console.error('Failed to create Square checkout');
     console.error(error);
+    if (pendingOrder?.id) {
+      await markCheckoutOrderFailed(pendingOrder.id, error.message);
+    }
     res.status(502).json({ error: 'Unable to create checkout.' });
   }
 });

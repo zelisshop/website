@@ -879,6 +879,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   const [checkoutError, setCheckoutError] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [fulfillmentType, setFulfillmentType] = useState('delivery');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [homeFeaturedProducts, setHomeFeaturedProducts] = useState({ beauty: [], baby: [] });
   const checkoutAbortRef = useRef(null);
   const [productDetail, setProductDetail] = useState({ loading: false, error: '', product: null, fromPage: 'home' });
@@ -1074,6 +1075,11 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   const checkoutCart = async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+      setCheckoutError('Enter a valid email address for your receipt.');
+      return;
+    }
+
     setIsCheckingOut(true);
     setCheckoutError('');
     checkoutAbortRef.current?.abort();
@@ -1086,9 +1092,12 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
         headers: { 'Content-Type': 'application/json' },
         signal: checkoutAbort.signal,
         body: JSON.stringify({
+          customerEmail: customerEmail.trim(),
           fulfillmentType,
           items: cartItems.map((item) => ({
             squareVariationId: item.squareVariationId,
+            name: item.name,
+            price: item.price,
             quantity: item.quantity,
           })),
         }),
@@ -1679,6 +1688,17 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             ) : (
               <p className="cartEmpty">Your cart is empty.</p>
             )}
+            <label className="cartEmailField">
+              <span>Email for receipt</span>
+              <input
+                type="email"
+                value={customerEmail}
+                placeholder="you@example.com"
+                autoComplete="email"
+                disabled={isCheckingOut || !cartItems.length}
+                onChange={(event) => setCustomerEmail(event.target.value)}
+              />
+            </label>
             <fieldset className="cartFulfillment" disabled={isCheckingOut || !cartItems.length}>
               <legend>Fulfillment</legend>
               <label>
