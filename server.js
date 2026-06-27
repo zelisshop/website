@@ -803,6 +803,153 @@ async function searchSquareCatalogPage(categoryKey, cursor, maxPriceAmount = 0, 
   };
 }
 
+async function getSquareCategoryItems(categoryKey) {
+  const categoriesByName = await getSquareCategoriesByName();
+  const category = categoriesByName.get(categoryKey);
+
+  if (!category) {
+    return [];
+  }
+
+  let squareCursor = '';
+  const matchedItems = [];
+
+  do {
+    const data = await squareRequest('/v2/catalog/search-catalog-items', {}, {
+      method: 'POST',
+      body: {
+        category_ids: [category.id],
+        enabled_location_ids: [getSquareLocationId()],
+        limit: 100,
+        sort_order: 'ASC',
+        product_types: ['REGULAR'],
+        archived_state: 'ARCHIVED_STATE_NOT_ARCHIVED',
+        ...(squareCursor ? { cursor: squareCursor } : {}),
+      },
+    });
+
+    matchedItems.push(...(data?.items || []));
+    squareCursor = data?.cursor || '';
+  } while (squareCursor);
+
+  return matchedItems;
+}
+
+function shuffleProducts(products) {
+  return [...products]
+    .map((product) => ({ product, sortKey: crypto.randomInt(0, 1_000_000) }))
+    .sort((left, right) => left.sortKey - right.sortKey)
+    .map(({ product }) => product);
+}
+
+async function getSquareSalesCounts() {
+  const salesCounts = new Map();
+  const startAt = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+  let cursor = '';
+  let pageCount = 0;
+
+  do {
+    const data = await squareRequest('/v2/orders/search', {}, {
+      method: 'POST',
+      body: {
+        location_ids: [getSquareLocationId()],
+        limit: 100,
+        return_entries: false,
+        query: {
+          filter: {
+            state_filter: { states: ['COMPLETED'] },
+            date_time_filter: {
+              closed_at: {
+                start_at: startAt,
+              },
+            },
+          },
+        },
+        ...(cursor ? { cursor } : {}),
+      },
+    });
+
+    (data?.orders || []).forEach((order) => {
+      (order.line_items || []).forEach((lineItem) => {
+        const objectId = lineItem.catalog_object_id;
+        const quantity = Number(lineItem.quantity || 1);
+
+        if (objectId) {
+          salesCounts.set(objectId, (salesCounts.get(objectId) || 0) + (Number.isFinite(quantity) ? quantity : 1));
+        }
+      });
+    });
+
+    cursor = data?.cursor || '';
+    pageCount += 1;
+  } while (cursor && pageCount < 10);
+
+  return salesCounts;
+}
+
+function rankFeaturedProducts(products, salesCounts, count) {
+  const productsWithScores = products.map((product) => ({
+    product,
+    score: Math.max(
+      salesCounts.get(product.squareVariationId) || 0,
+      salesCounts.get(product.id) || 0
+    ),
+  }));
+  const hasSalesData = productsWithScores.some(({ score }) => score > 0);
+
+  if (!hasSalesData) {
+    return {
+      products: shuffleProducts(products).slice(0, count),
+      source: 'random',
+    };
+  }
+
+  const bestSellers = productsWithScores
+    .sort((left, right) => right.score - left.score || normalizeText(left.product.name).localeCompare(normalizeText(right.product.name)))
+    .slice(0, Math.max(count * 4, count))
+    .map(({ product }) => product);
+
+  return {
+    products: shuffleProducts(bestSellers).slice(0, count),
+    source: 'bestseller',
+  };
+}
+
+async function getSquareHomepageFeaturedProducts() {
+  const groupedProducts = { beauty: [], baby: [] };
+
+  if (!process.env.SQUARE_ACCESS_TOKEN) {
+    return { configured: false, source: 'fallback', products: groupedProducts };
+  }
+
+  let salesCounts = new Map();
+
+  try {
+    salesCounts = await getSquareSalesCounts();
+  } catch (error) {
+    console.warn('Square order history unavailable for homepage featured products; using random catalog products.');
+    console.warn(error.message);
+  }
+
+  const sources = [];
+
+  await Promise.all(['beauty', 'baby'].map(async (categoryKey) => {
+    const items = await getSquareCategoryItems(categoryKey);
+    const products = (await normalizeItems(categoryKey, items))
+      .filter((product) => product.imageAvailable && product.imageUrl && product.squareVariationId);
+    const ranked = rankFeaturedProducts(products, salesCounts, 3);
+
+    groupedProducts[categoryKey] = ranked.products;
+    sources.push(ranked.source);
+  }));
+
+  return {
+    configured: true,
+    source: sources.includes('bestseller') ? 'bestseller' : 'random',
+    products: groupedProducts,
+  };
+}
+
 async function getSquareCatalogProducts() {
   const groupedProducts = Object.fromEntries(catalogKeys.map((key) => [key, []]));
 
@@ -983,6 +1130,18 @@ app.get('/api/products', async (_req, res) => {
     console.error('Failed to fetch Square products');
     console.error(error);
     res.status(502).json({ error: 'Unable to fetch Square products.' });
+  }
+});
+
+app.get('/api/home-featured-products', async (_req, res) => {
+  try {
+    const featuredProducts = await getSquareHomepageFeaturedProducts();
+    res.set('Cache-Control', 'no-store');
+    res.json(featuredProducts);
+  } catch (error) {
+    console.error('Failed to fetch Square homepage featured products');
+    console.error(error);
+    res.status(502).json({ error: 'Unable to fetch homepage products.' });
   }
 });
 

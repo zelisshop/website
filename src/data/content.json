@@ -20,6 +20,32 @@
   "home": {
     "partnersTitle": "LUXURY PARTNERS",
     "partnerLogosText": "Partner Logos",
+    "partners": [
+      {
+        "name": "Atelier One",
+        "imageUrl": ""
+      },
+      {
+        "name": "Modern Pantry",
+        "imageUrl": ""
+      },
+      {
+        "name": "Little Studio",
+        "imageUrl": ""
+      },
+      {
+        "name": "Capsule House",
+        "imageUrl": ""
+      },
+      {
+        "name": "Botanical Lab",
+        "imageUrl": ""
+      },
+      {
+        "name": "Heritage Market",
+        "imageUrl": ""
+      }
+    ],
     "categories": [
       {
         "key": "beauty",
@@ -75,7 +101,7 @@
         "Small-batch Artisan Laksa Pastes",
         "Heritage Bario Rice Collections"
       ],
-      "button": "EXPLORE THE PANTRY"
+      "button": "EXPLORE GROCERIES"
     },
     "babyIntro": {
       "eyebrow": "GENTLE LUXURY",
@@ -123,7 +149,7 @@
     "beauty": {
       "title": "Beauty Collection",
       "description": "A curated selection of high-performance skincare and artisanal cosmetics designed for the discerning individual. We bridge the gap between scientific efficacy and botanical luxury, ensuring every application is an act of self-care.",
-      "volume": "VOLUME IV / SEASONAL EDIT",
+      "volume": "",
       "showing": "Showing 18 of 63 items",
       "products": [
         {
@@ -174,7 +200,7 @@
       ]
     },
     "groceries": {
-      "eyebrow": "THE ARCHIPELAGO COLLECTION",
+      "eyebrow": "Malaysian Groceries",
       "title": "The Malaysian Pantry",
       "description": "Discover a curated collection of locally-sourced, artisanal staples and fresh organic produce directly from the heart of Malaysia. From heritage grains of Sarawak to small-batch spices from Malacca, experience the authentic soul of the archipelago.",
       "heroImageUrl": "",
@@ -280,7 +306,7 @@
       "eyebrow": "THE CLOTHING EDIT",
       "title": "The Capsule Wardrobe",
       "description": "Effortless simplicity for the modern lifestyle. Refined pieces crafted out of natural fabrics, made to elevate the daily ritual.",
-      "button": "SHOP THE EDIT",
+      "button": "",
       "heroImageUrl": "",
       "philosophyTitle": "The Philosophy of Less",
       "philosophyDescription": "We believe in intentionality and quality over quantity. Each garment in our collection is designed to transition seamlessly from season to season, creating a wardrobe that is both functional and emotionally durable.",

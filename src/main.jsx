@@ -70,6 +70,16 @@ async function fetchCatalogPage(category, cursor = '', filters = {}) {
   return response.json();
 }
 
+async function fetchHomeFeaturedProducts() {
+  const response = await fetch('/api/home-featured-products');
+
+  if (!response.ok) {
+    throw new Error('Unable to load homepage products.');
+  }
+
+  return response.json();
+}
+
 async function fetchProductDetail(productId) {
   const response = await fetch(`/api/product/${encodeURIComponent(productId)}`);
 
@@ -563,7 +573,9 @@ function BeautyCatalog({
           <h1 {...previewPathProps(['catalogs', 'beauty', 'title'], highlightedPath)}>{beauty.title}</h1>
           <p {...previewPathProps(['catalogs', 'beauty', 'description'], highlightedPath)}>{beauty.description}</p>
         </div>
-        <span {...previewPathProps(['catalogs', 'beauty', 'volume'], highlightedPath)}>{beauty.volume}</span>
+        {beauty.volume ? (
+          <span {...previewPathProps(['catalogs', 'beauty', 'volume'], highlightedPath)}>{beauty.volume}</span>
+        ) : null}
       </div>
 
       <div className="beautyCatalog" id="beauty-catalog">
@@ -639,7 +651,6 @@ function ClothingCatalog({
           <span {...previewPathProps(['catalogs', 'clothing', 'eyebrow'], highlightedPath)}>{clothing.eyebrow}</span>
           <h1 {...previewPathProps(['catalogs', 'clothing', 'title'], highlightedPath)}>{clothing.title}</h1>
           <p {...previewPathProps(['catalogs', 'clothing', 'description'], highlightedPath)}>{clothing.description}</p>
-          <a {...previewPathProps(['catalogs', 'clothing', 'button'], highlightedPath)} href="#clothing-grid">{clothing.button}</a>
         </div>
         <div className="clothingHeroRack" style={imageStyle(clothing.heroImageUrl)} aria-hidden="true">
           <i />
@@ -868,6 +879,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   const [checkoutError, setCheckoutError] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [fulfillmentType, setFulfillmentType] = useState('delivery');
+  const [homeFeaturedProducts, setHomeFeaturedProducts] = useState({ beauty: [], baby: [] });
   const checkoutAbortRef = useRef(null);
   const [productDetail, setProductDetail] = useState({ loading: false, error: '', product: null, fromPage: 'home' });
   const [priceFilters, setPriceFilters] = useState({
@@ -1165,6 +1177,30 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   }, [searchFilters]);
 
   useEffect(() => {
+    if (preview) {
+      return undefined;
+    }
+
+    let isActive = true;
+
+    fetchHomeFeaturedProducts()
+      .then((data) => {
+        if (isActive) {
+          setHomeFeaturedProducts(data.products || { beauty: [], baby: [] });
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setHomeFeaturedProducts({ beauty: [], baby: [] });
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [preview]);
+
+  useEffect(() => {
     if (preview || activePage === 'home' || activePage === 'product' || catalogPages[activePage]?.products?.length) {
       return;
     }
@@ -1205,6 +1241,55 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
       });
     });
   }, [activePage, highlightedPath, preview]);
+
+  const beautyHomeProducts = homeFeaturedProducts.beauty || [];
+  const beautyFeaturedProduct = beautyHomeProducts[0] || null;
+  const beautyFeatured = {
+    product: beautyFeaturedProduct,
+    title: beautyFeaturedProduct?.name || content.home.beautyIntro.productTitle,
+    description: beautyFeaturedProduct?.description || content.home.beautyIntro.description,
+    price: beautyFeaturedProduct?.price || content.home.beautyIntro.price,
+    imageUrl: beautyFeaturedProduct?.imageUrl || content.home.beautyIntro.imageUrl,
+    hasLiveImage: Boolean(beautyFeaturedProduct?.imageUrl),
+  };
+  const beautyMiniProducts = content.home.beautyIntro.miniProducts.map((fallbackProduct, index) => {
+    const product = beautyHomeProducts[index + 1] || null;
+
+    return {
+      product,
+      name: product?.name || fallbackProduct.name,
+      price: product?.price || fallbackProduct.price,
+      imageUrl: product?.imageUrl || fallbackProduct.imageUrl,
+      hasLiveImage: Boolean(product?.imageUrl),
+    };
+  });
+  const babyHomeProducts = homeFeaturedProducts.baby || [];
+  const babyProducts = content.home.babyIntro.products.map((fallbackProduct, index) => {
+    const product = babyHomeProducts[index] || null;
+
+    return {
+      product,
+      name: product?.name || fallbackProduct.name,
+      description: product?.description || fallbackProduct.description,
+      price: product?.price || fallbackProduct.price,
+      button: product ? 'VIEW PRODUCT' : fallbackProduct.button,
+      imageUrl: product?.imageUrl || fallbackProduct.imageUrl,
+      hasLiveImage: Boolean(product?.imageUrl),
+    };
+  });
+  const openHomeProduct = (product, page) => (event) => {
+    event.preventDefault();
+
+    if (product?.id) {
+      viewProduct(product.id);
+      return;
+    }
+
+    setActivePage(page);
+    if (!preview) {
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    }
+  };
 
   return (
     <main className="pageShell">
@@ -1341,7 +1426,19 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
         <footer className="partners" aria-label="Luxury partners" data-reveal="up">
           <p>{content.home.partnersTitle}</p>
-          <div className="partnerPlaceholder">{content.home.partnerLogosText}</div>
+          <div {...previewPathProps(['home', 'partners'], highlightedPath, 'partnerCarousel')} aria-label={content.home.partnerLogosText}>
+            <div className="partnerTrack" aria-hidden="true">
+              {[...(content.home.partners || []), ...(content.home.partners || [])].map((partner, index) => (
+                <div className="partnerLogo" key={`${partner.name}-${index}`}>
+                  {partner.imageUrl ? (
+                    <img src={partner.imageUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span>{partner.name}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </footer>
 
         <section className="categoryShowcase" aria-label="Featured categories">
@@ -1400,26 +1497,31 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             <article {...previewPathProps(['home', 'beautyIntro'], highlightedPath, 'featuredProduct')} data-reveal="up">
               <div className="productCopy">
                 <span className="badge">{content.home.beautyIntro.badge}</span>
-                <h3>{multilineText(content.home.beautyIntro.productTitle)}</h3>
-                <p>{content.home.beautyIntro.description}</p>
-                <strong>{content.home.beautyIntro.price}</strong>
-                <button type="button" onClick={navigateTo('beauty')}>{content.home.beautyIntro.button}</button>
+                <h3>{multilineText(beautyFeatured.title)}</h3>
+                <p>{beautyFeatured.description}</p>
+                <strong>{beautyFeatured.price}</strong>
+                <button
+                  type="button"
+                  onClick={beautyFeatured.product ? () => addToCart(beautyFeatured.product) : navigateTo('beauty')}
+                >
+                  {content.home.beautyIntro.button}
+                </button>
               </div>
-              <div className="oilPlaceholder" style={imageStyle(content.home.beautyIntro.imageUrl)} aria-label="Botanical radiance oil product placeholder">
-                <span />
+              <div className="oilPlaceholder" style={imageStyle(beautyFeatured.imageUrl)} aria-label={`${beautyFeatured.title} product image`}>
+                {beautyFeatured.hasLiveImage ? null : <span />}
               </div>
             </article>
 
             <div className="miniProducts">
-              <a {...previewPathProps(['home', 'beautyIntro', 'miniProducts', 0], highlightedPath, 'miniProduct silkProduct')} style={imageStyle(content.home.beautyIntro.miniProducts[0].imageUrl)} href="#beauty-catalog" onClick={navigateTo('beauty')} data-reveal="right">
-                <span aria-hidden="true" />
-                <strong>{content.home.beautyIntro.miniProducts[0].name}</strong>
-                <em>{content.home.beautyIntro.miniProducts[0].price}</em>
+              <a {...previewPathProps(['home', 'beautyIntro', 'miniProducts', 0], highlightedPath, 'miniProduct silkProduct')} style={imageStyle(beautyMiniProducts[0].imageUrl)} href="#beauty-catalog" onClick={openHomeProduct(beautyMiniProducts[0].product, 'beauty')} data-reveal="right">
+                {beautyMiniProducts[0].hasLiveImage ? null : <span aria-hidden="true" />}
+                <strong>{beautyMiniProducts[0].name}</strong>
+                <em>{beautyMiniProducts[0].price}</em>
               </a>
-              <a {...previewPathProps(['home', 'beautyIntro', 'miniProducts', 1], highlightedPath, 'miniProduct balmProduct')} style={imageStyle(content.home.beautyIntro.miniProducts[1].imageUrl)} href="#beauty-catalog" onClick={navigateTo('beauty')} data-reveal="right">
-                <span aria-hidden="true" />
-                <strong>{content.home.beautyIntro.miniProducts[1].name}</strong>
-                <em>{content.home.beautyIntro.miniProducts[1].price}</em>
+              <a {...previewPathProps(['home', 'beautyIntro', 'miniProducts', 1], highlightedPath, 'miniProduct balmProduct')} style={imageStyle(beautyMiniProducts[1].imageUrl)} href="#beauty-catalog" onClick={openHomeProduct(beautyMiniProducts[1].product, 'beauty')} data-reveal="right">
+                {beautyMiniProducts[1].hasLiveImage ? null : <span aria-hidden="true" />}
+                <strong>{beautyMiniProducts[1].name}</strong>
+                <em>{beautyMiniProducts[1].price}</em>
               </a>
             </div>
           </div>
@@ -1460,37 +1562,45 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
           <div className="babyProductGrid">
             <article {...previewPathProps(['home', 'babyIntro', 'products', 0], highlightedPath, 'babyProductCard')} data-reveal="up">
-              <div className="babyProductImage cottonSuitImage" style={imageStyle(content.home.babyIntro.products[0].imageUrl)} aria-hidden="true">
-                <span />
+              <div className="babyProductImage cottonSuitImage" style={imageStyle(babyProducts[0].imageUrl)} aria-hidden="true">
+                {babyProducts[0].hasLiveImage ? null : <span />}
               </div>
-              <h3>{content.home.babyIntro.products[0].name}</h3>
-              <p>{content.home.babyIntro.products[0].description}</p>
-              <strong>{content.home.babyIntro.products[0].price}</strong>
-              <a href="#baby-catalog" onClick={navigateTo('baby')}>{content.home.babyIntro.products[0].button}</a>
+              <h3>{babyProducts[0].name}</h3>
+              <p>{babyProducts[0].description}</p>
+              <strong>{babyProducts[0].price}</strong>
+              <a href="#baby-catalog" onClick={openHomeProduct(babyProducts[0].product, 'baby')}>{babyProducts[0].button}</a>
             </article>
 
             <article {...previewPathProps(['home', 'babyIntro', 'products', 1], highlightedPath, 'babyProductCard')} data-reveal="up">
-              <div className="babyProductImage blocksImage" style={imageStyle(content.home.babyIntro.products[1].imageUrl)} aria-hidden="true">
-                <span className="toyBear" />
-                <span className="toyStack leftStack" />
-                <span className="toyStack rightStack" />
+              <div className="babyProductImage blocksImage" style={imageStyle(babyProducts[1].imageUrl)} aria-hidden="true">
+                {babyProducts[1].hasLiveImage ? null : (
+                  <>
+                    <span className="toyBear" />
+                    <span className="toyStack leftStack" />
+                    <span className="toyStack rightStack" />
+                  </>
+                )}
               </div>
-              <h3>{content.home.babyIntro.products[1].name}</h3>
-              <p>{content.home.babyIntro.products[1].description}</p>
-              <strong>{content.home.babyIntro.products[1].price}</strong>
-              <a href="#baby-catalog" onClick={navigateTo('baby')}>{content.home.babyIntro.products[1].button}</a>
+              <h3>{babyProducts[1].name}</h3>
+              <p>{babyProducts[1].description}</p>
+              <strong>{babyProducts[1].price}</strong>
+              <a href="#baby-catalog" onClick={openHomeProduct(babyProducts[1].product, 'baby')}>{babyProducts[1].button}</a>
             </article>
 
             <article {...previewPathProps(['home', 'babyIntro', 'products', 2], highlightedPath, 'babyProductCard')} data-reveal="up">
-              <div className="babyProductImage dreamWashImage" style={imageStyle(content.home.babyIntro.products[2].imageUrl)} aria-hidden="true">
-                <span />
-                <span />
-                <span />
+              <div className="babyProductImage dreamWashImage" style={imageStyle(babyProducts[2].imageUrl)} aria-hidden="true">
+                {babyProducts[2].hasLiveImage ? null : (
+                  <>
+                    <span />
+                    <span />
+                    <span />
+                  </>
+                )}
               </div>
-              <h3>{content.home.babyIntro.products[2].name}</h3>
-              <p>{content.home.babyIntro.products[2].description}</p>
-              <strong>{content.home.babyIntro.products[2].price}</strong>
-              <a href="#baby-catalog" onClick={navigateTo('baby')}>{content.home.babyIntro.products[2].button}</a>
+              <h3>{babyProducts[2].name}</h3>
+              <p>{babyProducts[2].description}</p>
+              <strong>{babyProducts[2].price}</strong>
+              <a href="#baby-catalog" onClick={openHomeProduct(babyProducts[2].product, 'baby')}>{babyProducts[2].button}</a>
             </article>
           </div>
         </section>
@@ -1551,10 +1661,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
           <nav aria-label="Footer social links" data-reveal="up">
             <h3>Connect</h3>
-            <a href="#instagram">Instagram</a>
-            <a href="#pinterest">Pinterest</a>
-            <a href="#tiktok">TikTok</a>
-            <a href="#store-locator">Store Locator</a>
+            <a href="https://www.instagram.com/zelis.shop/" target="_blank" rel="noreferrer">Instagram</a>
           </nav>
 
           <div className="footerBottom">
@@ -1668,6 +1775,10 @@ function imageSizeHint(path) {
 
   if (pathString.startsWith('home.categories.')) {
     return 'recommended 900 x 1200px';
+  }
+
+  if (pathString.startsWith('home.partners.')) {
+    return 'recommended 600 x 220px';
   }
 
   if (pathString === 'home.beautyIntro.imageUrl') {
@@ -1873,12 +1984,14 @@ function ContentEditor({ value, path = [], onChange, onFocus, onUploadImage, upl
 function AdminPage({ content, setContent, previewContent = content }) {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [token, setToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
+  const [adminView, setAdminView] = useState('dashboard');
   const [error, setError] = useState('');
   const [selectedPath, setSelectedPath] = useState('');
   const [uploadingPath, setUploadingPath] = useState('');
 
   const expireAdminSession = () => {
     setToken('');
+    setAdminView('dashboard');
     window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
     setError('Admin session expired. Please login again.');
   };
@@ -1895,6 +2008,7 @@ function AdminPage({ content, setContent, previewContent = content }) {
       if (response.ok) {
         const data = await response.json();
         setToken(data.token);
+        setAdminView('dashboard');
         window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, data.token);
         setError('');
         return;
@@ -2036,6 +2150,73 @@ function AdminPage({ content, setContent, previewContent = content }) {
     );
   }
 
+  if (adminView === 'dashboard') {
+    return (
+      <main className="adminDashboard">
+        <header className="adminDashboardTop">
+          <div>
+            <a className="brand" href="/">Zelis Shop</a>
+            <span>Admin Dashboard</span>
+          </div>
+          <nav aria-label="Admin quick actions">
+            <a href="/">Open Website</a>
+            <button type="button" onClick={() => setAdminView('editor')}>Edit Website</button>
+          </nav>
+        </header>
+
+        {error ? <p className="adminError">{error}</p> : null}
+
+        <section className="adminDashboardGrid" aria-label="Website dashboard">
+          <article className="adminDashboardPrimary">
+            <span>Website Content</span>
+            <h1>Manage storefront content</h1>
+            <p>Update homepage copy, partner logos, category imagery, catalogue sections, and uploaded media from the website editor.</p>
+            <button type="button" onClick={() => setAdminView('editor')}>Edit Website</button>
+          </article>
+
+          <div className="adminDashboardStats" aria-label="Website status">
+            <article>
+              <span>Sections</span>
+              <strong>{Object.keys(content.home || {}).length}</strong>
+              <p>Homepage content groups</p>
+            </article>
+            <article>
+              <span>Partners</span>
+              <strong>{content.home?.partners?.length || 0}</strong>
+              <p>Logo slots ready</p>
+            </article>
+            <article>
+              <span>Checkout</span>
+              <strong>Square</strong>
+              <p>Delivery and pickup enabled</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="adminDashboardCards" aria-label="Admin tools">
+          <article>
+            <span>01</span>
+            <strong>Website Editor</strong>
+            <p>Open the live preview editor to change text and images.</p>
+            <button type="button" onClick={() => setAdminView('editor')}>Open Editor</button>
+          </article>
+          <article>
+            <span>02</span>
+            <strong>Image Uploads</strong>
+            <p>Images upload to Spaces CDN and are stored against their content path.</p>
+            <button type="button" onClick={() => setAdminView('editor')}>Manage Images</button>
+          </article>
+          <article>
+            <span>03</span>
+            <strong>Storefront</strong>
+            <p>Review the live customer-facing website in a separate tab.</p>
+            <a href="/">View Website</a>
+          </article>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="adminShell">
       <aside className="adminPanel">
@@ -2046,7 +2227,10 @@ function AdminPage({ content, setContent, previewContent = content }) {
             {selectedPath ? <small>Selected: {selectedPath}</small> : null}
             {error ? <p className="adminError">{error}</p> : null}
           </div>
-          <button type="button" onClick={resetContent}>Reset</button>
+          <div className="adminPanelActions">
+            <button type="button" onClick={() => setAdminView('dashboard')}>Back to Dashboard</button>
+            <button type="button" onClick={resetContent}>Reset</button>
+          </div>
         </div>
         <ContentEditor
           value={content}
