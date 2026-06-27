@@ -1601,18 +1601,39 @@ app.post('/api/checkout', async (req, res) => {
       ];
     }
 
-    const data = await squareRequest('/v2/online-checkout/payment-links', {}, {
-      method: 'POST',
-      body: {
-        idempotency_key: crypto.randomUUID(),
-        order,
-        checkout_options: checkoutOptions,
-        pre_populated_data: {
-          buyer_email: customerEmail,
-        },
-        payment_note: fulfillmentType === 'pickup' ? 'Self pickup' : 'Delivery',
+    const paymentLinkBody = {
+      order,
+      checkout_options: checkoutOptions,
+      pre_populated_data: {
+        buyer_email: customerEmail,
       },
-    });
+      payment_note: fulfillmentType === 'pickup' ? 'Self pickup' : 'Delivery',
+    };
+    let data;
+
+    try {
+      data = await squareRequest('/v2/online-checkout/payment-links', {}, {
+        method: 'POST',
+        body: {
+          idempotency_key: crypto.randomUUID(),
+          ...paymentLinkBody,
+        },
+      });
+    } catch (error) {
+      if (!String(error.message || '').includes('pre_populated_data.buyer_email')) {
+        throw error;
+      }
+
+      console.warn('Square rejected the prefilled buyer email; retrying checkout without prefilled email.');
+      data = await squareRequest('/v2/online-checkout/payment-links', {}, {
+        method: 'POST',
+        body: {
+          idempotency_key: crypto.randomUUID(),
+          ...paymentLinkBody,
+          pre_populated_data: undefined,
+        },
+      });
+    }
 
     const checkoutUrl = data?.payment_link?.url || data?.payment_link?.long_url;
     const squareOrderId = data?.payment_link?.order_id || data?.related_resources?.orders?.[0]?.id || '';
