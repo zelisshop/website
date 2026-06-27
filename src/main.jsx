@@ -1602,11 +1602,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             <a href="#clothing-catalog" onClick={navigateTo('clothing')}>{content.home.clothingIntro.button}</a>
           </div>
 
-          <div className="capsuleImage" style={imageStyle(content.home.clothingIntro.imageUrl)} aria-label="Capsule wardrobe fashion placeholder" data-reveal="right">
-            <span className="modelHead" />
-            <span className="modelBody" />
-            <span className="modelPants" />
-          </div>
+          <div className="capsuleImage" style={imageStyle(content.home.clothingIntro.imageUrl)} aria-label="Capsule wardrobe fashion image" data-reveal="right" />
         </section>
           </>
         )}
