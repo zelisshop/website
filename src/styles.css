@@ -1521,6 +1521,7 @@ a {
   z-index: 8;
   display: grid;
   place-items: center;
+  pointer-events: none;
   border-radius: 10px;
   background: rgba(244, 230, 225, 0.72);
   backdrop-filter: blur(3px);
@@ -5134,23 +5135,42 @@ a {
   }
 
   .catalogLoadingOverlay {
-    position: fixed;
-    top: 116px;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 60;
+    position: absolute;
+    inset: 0;
+    z-index: 8;
     align-items: start;
     justify-items: center;
-    padding: 18px;
-    border-radius: 0;
-    background: rgba(244, 230, 225, 0.84);
+    padding: 8px;
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(244, 230, 225, 0.78), rgba(244, 230, 225, 0.18) 96px, transparent 150px);
+    backdrop-filter: none;
   }
 
   .catalogLoadingPopup {
-    width: min(100%, 300px);
-    margin-top: 12px;
-    padding: 22px 18px;
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-items: start;
+    align-items: center;
+    gap: 8px 10px;
+    width: min(100%, 280px);
+    margin-top: 0;
+    padding: 10px 12px;
+    box-shadow: 0 12px 28px rgba(72, 42, 45, 0.13);
+    text-align: left;
+  }
+
+  .catalogLoadingPopup span {
+    grid-row: 1 / 3;
+    width: 24px;
+    height: 24px;
+  }
+
+  .catalogLoadingPopup strong {
+    font-size: 15px;
+  }
+
+  .catalogLoadingPopup p {
+    font-size: 10px;
+    line-height: 1.25;
   }
 
   .cartDrawer {
@@ -5175,10 +5195,6 @@ a {
 }
 
 @media (max-width: 380px) {
-  .catalogLoadingOverlay {
-    top: 108px;
-  }
-
   .catalogProductCard,
   .groceryProductCard,
   .babyCatalogProduct,
