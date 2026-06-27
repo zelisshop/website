@@ -53,6 +53,9 @@ let databaseInitError = '';
 const defaultContent = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'src', 'data', 'content.json'), 'utf8')
 );
+const cacheDir = path.join(__dirname, '.cache');
+const homeFeaturedCachePath = path.join(cacheDir, 'home-featured-products.json');
+const homeFeaturedCacheTtlMs = Number(process.env.HOME_FEATURED_CACHE_TTL_MS || 15 * 60 * 1000);
 
 const port = process.env.PORT || 5173;
 const sslCaPath = process.env.DB_SSL_CA_PATH || path.join(__dirname, 'ca-certificate (5).crt');
@@ -77,6 +80,7 @@ const categoryImageClasses = {
   clothing: ['clothingSilkBlouse', 'clothingTrousers', 'clothingCashmere', 'clothingBlazer', 'clothingSlipDress', 'clothingTrench'],
 };
 const imageAvailabilityCache = new Map();
+let homeFeaturedRefreshPromise = null;
 
 const uploadImageMetadataJson = express.json({ limit: '10mb' });
 
@@ -950,6 +954,88 @@ async function getSquareHomepageFeaturedProducts() {
   };
 }
 
+function readHomeFeaturedCache() {
+  try {
+    if (!fs.existsSync(homeFeaturedCachePath)) {
+      return null;
+    }
+
+    const cached = JSON.parse(fs.readFileSync(homeFeaturedCachePath, 'utf8'));
+
+    if (!cached?.data || !cached?.cachedAt) {
+      return null;
+    }
+
+    return cached;
+  } catch (error) {
+    console.warn('Unable to read homepage featured product cache.');
+    console.warn(error.message);
+    return null;
+  }
+}
+
+function writeHomeFeaturedCache(data) {
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      homeFeaturedCachePath,
+      JSON.stringify({ cachedAt: Date.now(), data }, null, 2)
+    );
+  } catch (error) {
+    console.warn('Unable to write homepage featured product cache.');
+    console.warn(error.message);
+  }
+}
+
+function annotateHomeFeaturedCache(data, cacheStatus, cachedAt = Date.now()) {
+  return {
+    ...data,
+    cache: {
+      status: cacheStatus,
+      cachedAt,
+      ttlMs: homeFeaturedCacheTtlMs,
+    },
+  };
+}
+
+async function refreshHomeFeaturedCache() {
+  if (!homeFeaturedRefreshPromise) {
+    homeFeaturedRefreshPromise = getSquareHomepageFeaturedProducts()
+      .then((data) => {
+        writeHomeFeaturedCache(data);
+        return data;
+      })
+      .finally(() => {
+        homeFeaturedRefreshPromise = null;
+      });
+  }
+
+  return homeFeaturedRefreshPromise;
+}
+
+async function getCachedHomepageFeaturedProducts() {
+  const cached = readHomeFeaturedCache();
+  const cachedAt = cached?.cachedAt || 0;
+  const cacheAge = Date.now() - cachedAt;
+
+  if (cached?.data && cacheAge < homeFeaturedCacheTtlMs) {
+    return annotateHomeFeaturedCache(cached.data, 'hit', cachedAt);
+  }
+
+  try {
+    const freshData = await refreshHomeFeaturedCache();
+    return annotateHomeFeaturedCache(freshData, cached?.data ? 'refresh' : 'miss');
+  } catch (error) {
+    if (cached?.data) {
+      console.warn('Square homepage featured refresh failed; serving stale cache.');
+      console.warn(error.message);
+      return annotateHomeFeaturedCache(cached.data, 'stale', cachedAt);
+    }
+
+    throw error;
+  }
+}
+
 async function getSquareCatalogProducts() {
   const groupedProducts = Object.fromEntries(catalogKeys.map((key) => [key, []]));
 
@@ -1135,8 +1221,8 @@ app.get('/api/products', async (_req, res) => {
 
 app.get('/api/home-featured-products', async (_req, res) => {
   try {
-    const featuredProducts = await getSquareHomepageFeaturedProducts();
-    res.set('Cache-Control', 'no-store');
+    const featuredProducts = await getCachedHomepageFeaturedProducts();
+    res.set('Cache-Control', 'private, max-age=60');
     res.json(featuredProducts);
   } catch (error) {
     console.error('Failed to fetch Square homepage featured products');
