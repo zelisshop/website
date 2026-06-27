@@ -5,6 +5,28 @@ import './styles.css';
 
 const CONTENT_STORAGE_KEY = 'zelis_shop_content';
 const ADMIN_TOKEN_STORAGE_KEY = 'zelis_admin_token';
+const CART_STORAGE_KEY = 'zelis_shop_cart';
+
+function getStoredCartState() {
+  try {
+    const storedCart = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) || '{}');
+    const items = Array.isArray(storedCart.items)
+      ? storedCart.items.filter((item) => item?.squareVariationId && Number(item.quantity) > 0)
+      : [];
+
+    return {
+      items,
+      fulfillmentType: storedCart.fulfillmentType === 'pickup' ? 'pickup' : 'delivery',
+      customerEmail: typeof storedCart.customerEmail === 'string' ? storedCart.customerEmail : '',
+    };
+  } catch {
+    return {
+      items: [],
+      fulfillmentType: 'delivery',
+      customerEmail: '',
+    };
+  }
+}
 
 function mergeContent(defaultValue, savedValue) {
   if (Array.isArray(defaultValue)) {
@@ -872,14 +894,15 @@ function GroceryCatalog({
 }
 
 function Storefront({ content, preview = false, highlightedPath = '' }) {
+  const storedCartState = useRef(preview ? { items: [], fulfillmentType: 'delivery', customerEmail: '' } : getStoredCartState());
   const [activePage, setActivePage] = useState('home');
   const [catalogPages, setCatalogPages] = useState({});
-  const [cartItems, setCartItems] = useState([]);
+  const [cartItems, setCartItems] = useState(storedCartState.current.items);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [fulfillmentType, setFulfillmentType] = useState('delivery');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [fulfillmentType, setFulfillmentType] = useState(storedCartState.current.fulfillmentType);
+  const [customerEmail, setCustomerEmail] = useState(storedCartState.current.customerEmail);
   const [homeFeaturedProducts, setHomeFeaturedProducts] = useState({ beauty: [], baby: [] });
   const checkoutAbortRef = useRef(null);
   const [productDetail, setProductDetail] = useState({ loading: false, error: '', product: null, fromPage: 'home' });
@@ -1108,6 +1131,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
         throw new Error(data.error || 'Unable to create checkout.');
       }
 
+      window.localStorage.removeItem(CART_STORAGE_KEY);
       window.location.href = data.checkoutUrl;
     } catch (error) {
       if (error.name !== 'AbortError') {
@@ -1184,6 +1208,18 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
 
     return () => window.clearTimeout(timeout);
   }, [searchFilters]);
+
+  useEffect(() => {
+    if (preview) {
+      return;
+    }
+
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+      items: cartItems,
+      fulfillmentType,
+      customerEmail,
+    }));
+  }, [cartItems, customerEmail, fulfillmentType, preview]);
 
   useEffect(() => {
     if (preview) {
