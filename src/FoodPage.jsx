@@ -222,7 +222,7 @@ export default function FoodPage({ vendorMode }) {
   }
   const query = search.trim().toLocaleLowerCase();
   const visible = vendorMode
-    ? items.filter(item => item.vendor_name === selected)
+    ? items.filter(item => item.vendor_name === selected).sort((a, b) => Number(Number(b.count) > 0) - Number(Number(a.count) > 0))
     : items.filter(item => `${item.food_name} ${item.vendor_name}`.toLocaleLowerCase().includes(query));
   return <main className="foodPage">
     <header className="foodHeader"><a className="brand" href="/">Zelis</a><nav><a href="/">Back to shop</a>{vendorMode && <a href="/admin">Admin dashboard</a>}<a href={vendorMode ? '/rte-food' : '/vendor'}>{vendorMode ? 'Customer view' : 'Vendor stock'}</a></nav></header>
