@@ -1,3 +1,4 @@
+import { initializeVendors, registerVendorRoutes } from './server/vendor.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -1297,6 +1298,8 @@ async function handleSquareWebhookEvent(event) {
 async function initDatabase() {
   const db = await getConnection();
 
+  await initializeVendors(db);
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1680,6 +1683,18 @@ app.put('/api/content', requireAuth, async (req, res) => {
   );
   await db.end();
   res.json({ ok: true });
+});
+
+registerVendorRoutes(app, getConnection, requireAuth);
+
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'This API endpoint is unavailable. Restart the server and try again.' });
+});
+
+app.use((error, req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next(error);
+  const status = error.type === 'entity.too.large' ? 413 : error instanceof SyntaxError ? 400 : 500;
+  res.status(status).json({ error: status === 400 ? 'Invalid request. Please try again.' : status === 413 ? 'Request is too large.' : 'Unable to complete the request. Please try again.' });
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));

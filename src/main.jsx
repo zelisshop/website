@@ -1,3 +1,4 @@
+import FoodPage from './FoodPage.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import defaultContent from './data/content.json';
@@ -63,7 +64,7 @@ async function fetchContent() {
   return mergeContent(defaultContent, await response.json());
 }
 
-async function fetchCatalogPage(category, cursor = '', filters = {}) {
+async function fetchCatalogPage(category, cursor = '', filters = {}, signal) {
   const params = new URLSearchParams();
 
   if (cursor) {
@@ -83,7 +84,7 @@ async function fetchCatalogPage(category, cursor = '', filters = {}) {
   }
 
   const query = params.toString() ? `?${params}` : '';
-  const response = await fetch(`/api/products/${category}${query}`);
+  const response = await fetch(`/api/products/${category}${query}`, { signal });
 
   if (!response.ok) {
     throw new Error('Unable to load Square products.');
@@ -178,21 +179,21 @@ function catalogStatusText(category, products, state, fallbackText = '') {
   }
 
   if (state?.products?.length) {
-    return `Page ${state.page || 1} - ${products.length} ${category} products`;
+    return `${products.length} products · Page ${state.page || 1}`;
   }
 
-  return fallbackText || `Showing ${products.length} products`;
+  return `${products.length} products`;
 }
 
 function CatalogPager({ state = {}, onPrevious, onNext, label }) {
   return (
     <nav className="catalogPagination" aria-label={label}>
       <button type="button" aria-label="Previous page" disabled={state.loading || (state.page || 1) <= 1} onClick={onPrevious}>
-        {'<'}
+        Previous
       </button>
-      <span className="active">{String(state.page || 1).padStart(2, '0')}</span>
+      <span className="active">Page {state.page || 1}</span>
       <button type="button" aria-label="Next page" disabled={state.loading || !state.nextCursor} onClick={onNext}>
-        {'>'}
+        Next
       </button>
     </nav>
   );
@@ -231,20 +232,18 @@ function ProductCard({
 
   return (
     <article {...previewPathProps(path, highlightedPath, cardClass)} key={product.id || product.name}>
-      <div className={productImageClass} style={imageStyle(product.imageUrl)} aria-hidden="true">
+      <button type="button" className={`${productImageClass} productImageButton`} style={imageStyle(product.imageUrl)} aria-label={`View ${product.name}`} onClick={() => onViewProduct(product.id)}>
         {product.badge ? <span className={badgeClass}>{product.badge}</span> : null}
-        <i />
-      </div>
-      <h3>{product.name}</h3>
-      <p>{product.description}</p>
-      <strong>{product.price}</strong>
-      <div className="productActions">
-        <button className="viewProductButton" type="button" onClick={() => onViewProduct(product.id)}>
-          View
-        </button>
-        <button className="addToCartButton" type="button" onClick={() => onAddToCart(product)}>
-          Add to Cart
-        </button>
+        <i aria-hidden="true" />
+      </button>
+      <div className="productCardInfo">
+        <h3><button className="productNameButton" type="button" onClick={() => onViewProduct(product.id)}>{product.name}</button></h3>
+        <p>{product.description}</p>
+        <strong>{product.price}</strong>
+        <div className="productActions">
+          <button className="viewProductButton" type="button" onClick={() => onViewProduct(product.id)}>Details</button>
+          <button className="addToCartButton" type="button" onClick={() => onAddToCart(product)}>Add to cart</button>
+        </div>
       </div>
     </article>
   );
@@ -529,46 +528,47 @@ function SortFilter({ category, value, onChange }) {
 
 function SearchFilter({ category, value, onChange }) {
   return (
-    <label className="searchFilter">
-      <span>Search</span>
-      <input
-        type="search"
-        value={value}
-        placeholder="Search product"
-        onChange={(event) => onChange(category, event.target.value)}
-      />
-    </label>
+    <div className="collectionSearch">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
+      <input type="search" aria-label={`Search ${category} products`} value={value} placeholder={`Search ${category === 'baby' ? 'baby essentials' : category}…`} onChange={event => onChange(category, event.target.value)} />
+      {value && <button type="button" onClick={() => onChange(category, '')} aria-label="Clear search">Clear</button>}
+    </div>
   );
 }
 
 function CatalogControls({
-  category,
-  products,
-  catalogState,
-  fallbackText,
-  priceFilter,
-  onPriceFilterChange,
-  sortFilter,
-  onSortFilterChange,
-  searchFilter,
-  onSearchFilterChange,
-  highlightedPath,
-  showingPath,
+  category, products, catalogState, fallbackText, priceFilter, onPriceFilterChange,
+  sortFilter, onSortFilterChange, searchFilter, onSearchFilterChange, highlightedPath, showingPath,
 }) {
-  const statusProps = showingPath
-    ? previewPathProps(showingPath, highlightedPath)
-    : {};
-
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const statusProps = showingPath ? previewPathProps(showingPath, highlightedPath) : {};
+  const filtered = Boolean(searchFilter || priceFilter < 200 || sortFilter !== 'image-name');
   return (
-    <div className="catalogToolbar catalogTopFilters">
-      <p {...statusProps}>{catalogStatusText(category, products, catalogState, fallbackText)}</p>
-      <div className="catalogFilterControls">
+    <div className="catalogToolbar catalogTopFilters" role="region" aria-label="Search and filter products">
+      <div className="collectionControlRow">
         <SearchFilter category={category} value={searchFilter} onChange={onSearchFilterChange} />
-        <PriceRangeFilter value={priceFilter} onChange={(value) => onPriceFilterChange(category, value)} />
         <SortFilter category={category} value={sortFilter} onChange={onSortFilterChange} />
+        <button className={`collectionFilterToggle ${priceFilter < 200 ? 'hasFilter' : ''}`} type="button" aria-expanded={filtersOpen} aria-controls={`${category}-price-filter`} onClick={() => setFiltersOpen(!filtersOpen)}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 7h16M4 17h16M9 4v6M15 14v6" /></svg>
+          Filters{priceFilter < 200 ? ' (1)' : ''}
+        </button>
+      </div>
+      <div id={`${category}-price-filter`} className="collectionExtraFilters" hidden={!filtersOpen}>
+        <PriceRangeFilter value={priceFilter} onChange={value => onPriceFilterChange(category, value)} />
+      </div>
+      <div className="collectionStatusRow">
+        <p {...statusProps} role="status" aria-live="polite">{catalogStatusText(category, products, catalogState, fallbackText)}</p>
+        {filtered && <button type="button" onClick={() => { onSearchFilterChange(category, ''); onPriceFilterChange(category, 200); onSortFilterChange(category, 'image-name'); }}>Reset filters</button>}
       </div>
     </div>
   );
+}
+
+function CatalogFeedback({ state, products, onRetry }) {
+  if (!state || state.loading) return null;
+  if (state?.error) return <div className="collectionEmpty" role="alert"><h2>Products couldn’t load</h2><p>Please try again in a moment.</p><button type="button" onClick={onRetry}>Try again</button></div>;
+  if (!products.length) return <div className="collectionEmpty"><h2>No products found</h2><p>Try a different search or reset your filters.</p></div>;
+  return null;
 }
 
 function BeautyCatalog({
@@ -589,7 +589,7 @@ function BeautyCatalog({
   const beauty = content.catalogs.beauty;
   const displayProducts = products || beauty.products;
   return (
-    <section className="catalogPageSection" aria-label="Beauty product catalogue">
+    <section className="catalogPageSection minimalCollection" aria-label="Beauty product catalogue">
       <div {...previewPathProps(['catalogs', 'beauty'], highlightedPath, 'catalogHeroHeader')}>
         <div>
           <h1 {...previewPathProps(['catalogs', 'beauty', 'title'], highlightedPath)}>{beauty.title}</h1>
@@ -617,8 +617,9 @@ function BeautyCatalog({
             showingPath={['catalogs', 'beauty', 'showing']}
           />
 
-          <div className="catalogProductsArea">
+          <div className="catalogProductsArea" aria-busy={Boolean(catalogState?.loading)}>
             <CatalogLoadingPopup active={catalogState?.loading} />
+            <CatalogFeedback state={catalogState} products={displayProducts} onRetry={() => onPage('beauty')} />
             <div className="catalogGrid">
               {displayProducts.map((product, index) => (
                 <ProductCard
@@ -667,7 +668,7 @@ function ClothingCatalog({
   const clothing = content.catalogs.clothing;
   const displayProducts = products || clothing.products;
   return (
-    <section className="clothingCatalogPage" aria-label="Clothing product catalogue">
+    <section className="clothingCatalogPage minimalCollection" aria-label="Clothing product catalogue">
       <div className="clothingHero">
         <div {...previewPathProps(['catalogs', 'clothing'], highlightedPath, 'clothingHeroCopy')}>
           <span {...previewPathProps(['catalogs', 'clothing', 'eyebrow'], highlightedPath)}>{clothing.eyebrow}</span>
@@ -698,8 +699,9 @@ function ClothingCatalog({
             onSearchFilterChange={onSearchFilterChange}
           />
 
-          <div className="catalogProductsArea">
+          <div className="catalogProductsArea" aria-busy={Boolean(catalogState?.loading)}>
             <CatalogLoadingPopup active={catalogState?.loading} />
+            <CatalogFeedback state={catalogState} products={displayProducts} onRetry={() => onPage('clothing')} />
             <div className="clothingGrid" id="clothing-grid">
               {displayProducts.map((product, index) => (
                 <ProductCard
@@ -761,7 +763,7 @@ function BabyCatalog({
   const baby = content.catalogs.baby;
   const displayProducts = products || baby.products;
   return (
-    <section className="catalogPageSection babyCatalogPage" aria-label="Baby product catalogue">
+    <section className="catalogPageSection babyCatalogPage minimalCollection" aria-label="Baby product catalogue">
       <div className="babyCatalogHeader">
         <div>
           <span {...previewPathProps(['catalogs', 'baby', 'eyebrow'], highlightedPath)}>{baby.eyebrow}</span>
@@ -786,8 +788,9 @@ function BabyCatalog({
             onSearchFilterChange={onSearchFilterChange}
           />
 
-          <div className="catalogProductsArea">
+          <div className="catalogProductsArea" aria-busy={Boolean(catalogState?.loading)}>
             <CatalogLoadingPopup active={catalogState?.loading} />
+            <CatalogFeedback state={catalogState} products={displayProducts} onRetry={() => onPage('baby')} />
             <div className="babyCatalogGrid">
               {displayProducts.map((product, index) => (
                 <ProductCard
@@ -835,7 +838,7 @@ function GroceryCatalog({
   const groceries = content.catalogs.groceries;
   const displayProducts = products || groceries.products;
   return (
-    <section className="catalogPageSection groceryPageSection" aria-label="Groceries product catalogue">
+    <section className="catalogPageSection groceryPageSection minimalCollection" aria-label="Groceries product catalogue">
       <div className="groceryCatalogHero">
         <div className="groceryCatalogCopy">
           <span {...previewPathProps(['catalogs', 'groceries', 'eyebrow'], highlightedPath)}>{groceries.eyebrow}</span>
@@ -862,8 +865,9 @@ function GroceryCatalog({
             onSearchFilterChange={onSearchFilterChange}
           />
 
-          <div className="catalogProductsArea">
+          <div className="catalogProductsArea" aria-busy={Boolean(catalogState?.loading)}>
             <CatalogLoadingPopup active={catalogState?.loading} />
+            <CatalogFeedback state={catalogState} products={displayProducts} onRetry={() => onPage('groceries')} />
             <div className="groceryCatalogGrid">
               {displayProducts.map((product, index) => (
                 <ProductCard
@@ -897,6 +901,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   const storedCartState = useRef(preview ? { items: [], fulfillmentType: 'delivery', customerEmail: '' } : getStoredCartState());
   const [activePage, setActivePage] = useState('home');
   const [catalogPages, setCatalogPages] = useState({});
+  const catalogRequests = useRef({});
   const [cartItems, setCartItems] = useState(storedCartState.current.items);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
@@ -931,19 +936,24 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
       return;
     }
 
+    catalogRequests.current[category]?.abort();
+    const request = new AbortController();
+    catalogRequests.current[category] = request;
     const current = catalogPages[category] || { page: 1, cursors: [''], cursor: '' };
-    let cursor = current.cursor || '';
-    let page = current.page || 1;
-    let cursors = current.cursors || [''];
+    let cursor = '';
+    let page = 1;
+    let cursors = [''];
 
     if (direction === 'next') {
       if (!current.nextCursor) {
         return;
       }
       cursor = current.nextCursor;
-      page += 1;
-      cursors = [...cursors, current.nextCursor];
+      page = (current.page || 1) + 1;
+      cursors = [...(current.cursors || ['']), current.nextCursor];
     } else if (direction === 'previous') {
+      page = current.page || 1;
+      cursors = current.cursors || [''];
       if (page <= 1) {
         return;
       }
@@ -966,10 +976,15 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
         maxPrice: priceFilters[category],
         sort: sortFilters[category],
         search: debouncedSearchFilters[category],
-      });
+      }, request.signal);
+      if (request.signal.aborted) return;
+      if (direction !== 'initial') {
+        document.querySelector('.catalogTopFilters')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+      }
       setCatalogPages((pages) => ({
         ...pages,
         [category]: {
+          queryKey: JSON.stringify([priceFilters[category], sortFilters[category], debouncedSearchFilters[category]]),
           products: data.products || [],
           nextCursor: data.nextCursor || '',
           cursor,
@@ -980,6 +995,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
         },
       }));
     } catch {
+      if (request.signal.aborted) return;
       setCatalogPages((pages) => ({
         ...pages,
         [category]: {
@@ -996,31 +1012,6 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
       ...filters,
       [category]: value,
     }));
-    setCatalogPages((pages) => ({
-      ...pages,
-      [category]: {
-        ...(pages[category] || {}),
-        products: [],
-        nextCursor: '',
-        cursor: '',
-        cursors: [''],
-        page: 1,
-      },
-    }));
-  };
-
-  const resetCatalogPage = (category) => {
-    setCatalogPages((pages) => ({
-      ...pages,
-      [category]: {
-        ...(pages[category] || {}),
-        products: [],
-        nextCursor: '',
-        cursor: '',
-        cursors: [''],
-        page: 1,
-      },
-    }));
   };
 
   const changeSortFilter = (category, value) => {
@@ -1028,15 +1019,14 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
       ...filters,
       [category]: value,
     }));
-    resetCatalogPage(category);
   };
 
   const changeSearchFilter = (category, value) => {
+    catalogRequests.current[category]?.abort();
     setSearchFilters((filters) => ({
       ...filters,
       [category]: value,
     }));
-    resetCatalogPage(category);
   };
 
   const addToCart = (product) => {
@@ -1246,7 +1236,9 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
   }, [preview]);
 
   useEffect(() => {
-    if (preview || activePage === 'home' || activePage === 'product' || catalogPages[activePage]?.products?.length) {
+    if (preview || activePage === 'home' || activePage === 'product') return;
+    const queryKey = JSON.stringify([priceFilters[activePage], sortFilters[activePage], debouncedSearchFilters[activePage]]);
+    if (catalogPages[activePage]?.queryKey === queryKey && !catalogPages[activePage]?.loading && !catalogPages[activePage]?.error) {
       return;
     }
 
@@ -1446,6 +1438,7 @@ function Storefront({ content, preview = false, highlightedPath = '' }) {
             <h1 {...previewPathProps(['hero', 'title'], highlightedPath)}>{content.hero.title}</h1>
             <p {...previewPathProps(['hero', 'subtitle'], highlightedPath)}>{content.hero.subtitle}</p>
             <a {...previewPathProps(['hero', 'button'], highlightedPath, 'cta')} href="#beauty-catalog" onClick={navigateTo('beauty')}>{content.hero.button}</a>
+            <a className="rteCollectionButton" href="/rte-food">Ready To Eat Food</a>
           </div>
         </div>
 
@@ -2192,6 +2185,7 @@ function AdminPage({ content, setContent, previewContent = content }) {
           </div>
           <nav aria-label="Admin quick actions">
             <a href="/">Open Website</a>
+            <a href="/vendor">Manage Vendors &amp; Food</a>
             <button type="button" onClick={() => setAdminView('editor')}>Edit Website</button>
           </nav>
         </header>
@@ -2226,6 +2220,12 @@ function AdminPage({ content, setContent, previewContent = content }) {
         </section>
 
         <section className="adminDashboardCards" aria-label="Admin tools">
+          <article>
+            <span>Food availability</span>
+            <strong>Vendors &amp; Ready To Eat Food</strong>
+            <p>Add and rename vendors, add their food, and update stock counts.</p>
+            <a href="/vendor">Manage Vendors &amp; Food</a>
+          </article>
           <article>
             <span>01</span>
             <strong>Website Editor</strong>
@@ -2300,6 +2300,9 @@ function App() {
         setContent(getInitialContent());
       });
   }, []);
+
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+  if (pathname === '/vendor' || pathname === '/rte-food') return <FoodPage vendorMode={pathname === '/vendor'} />;
 
   return isAdminPage ? (
     <AdminPage content={content} setContent={setContent} previewContent={content} />
