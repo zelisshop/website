@@ -5531,3 +5531,66 @@ a {
 .foodPage .foodDeleteButton, .foodPage .foodActions .foodDeleteButton { min-height: 44px; padding: 10px 16px; border: 1px solid #e3aeb9; border-radius: 8px; background: #fff0f2; color: #a01e36; font-size: 13px; font-weight: 600; cursor: pointer; }
 .foodPage .foodDeleteButton:hover:not(:disabled), .foodPage .foodActions .foodDeleteButton:hover:not(:disabled) { background: #fce0e6; border-color: #bd5267; color: #86172c; }
 .foodDeleteArea .foodActions { justify-content: flex-start; }
+
+/* Mobile vendor management and customer availability. */
+.foodContent h1, .foodContent > p, .foodHeader a { overflow-wrap: anywhere; }
+.foodPageActions:empty { display: none; }
+.foodForm input, .foodForm select { font-size: 16px; }
+.foodEditorDialog, .pinDialog { overscroll-behavior: contain; }
+@media (max-width: 820px) {
+  .foodHeader { padding: 16px 20px; gap: 16px; align-items: center; }
+  .foodHeader nav { flex-direction: row; justify-content: flex-end; flex-wrap: wrap; gap: 4px 12px; }
+  .foodHeader nav a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 4px; font-size: 12px; }
+  .foodContent { padding: 30px 20px calc(48px + env(safe-area-inset-bottom)); }
+  .vendorGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .vendorFoodGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .foodPage a.vendorTile { min-height: 200px; }
+}
+@media (max-width: 600px) {
+  .foodHeader { display: flex; flex-wrap: wrap; padding: 12px 16px; gap: 8px; }
+  .foodHeader .brand { flex: 0 0 100%; font-size: 30px; }
+  .foodHeader nav { width: 100%; justify-content: flex-start; gap: 4px 16px; }
+  .foodHeader nav a { font-size: 12px; text-align: left; }
+  .foodContent { padding: 26px 16px calc(40px + env(safe-area-inset-bottom)); }
+  .foodContent h1 { margin: 12px 0; font-size: 32px; line-height: 1.15; }
+  .foodEyebrow { display: block; font-size: 10px; line-height: 1.6; letter-spacing: 1.4px; }
+  .foodContent > p { font-size: 14px; }
+  .foodPage .foodPageActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 22px 0; }
+  .foodPage .foodPageActions:empty { display: none; }
+  .foodPageActions button { width: 100%; min-height: 46px; padding: 10px 12px; }
+  .foodPageActions button:only-child { grid-column: 1 / -1; }
+  .foodPage .vendorBackLink { min-height: 48px; margin-bottom: 22px; }
+  .vendorGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 24px 0; gap: 12px; }
+  .foodPage a.vendorTile { min-height: 180px; aspect-ratio: auto; padding: 18px 12px; gap: 10px; }
+  .vendorTile > span { font-size: 26px; }
+  .vendorTile strong { font-size: 14px; line-height: 1.4; }
+  .vendorTile small { font-size: 11px; }
+  .vendorFoodGrid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .vendorFoodCard { min-height: 260px; padding: 20px; }
+  .vendorFoodCard h3 { margin: 14px 0; font-size: 18px; }
+  .vendorFoodSummary { margin: 26px 0 18px; gap: 8px; }
+  .vendorFoodSummary > span { width: 100%; font-size: 12px; }
+  .foodSearch { margin: 24px 0; }
+  .foodSearchField { min-height: 50px; gap: 8px; padding: 4px 10px; }
+  .foodSearchField button { min-width: 44px; min-height: 44px; }
+  .foodSearchField input { font-size: 16px; }
+  .foodTableWrap { overflow: visible; border: 0; background: transparent; margin-top: 20px; }
+  .foodTable, .foodTable tbody { display: block; width: 100%; }
+  .foodTable thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .foodTable tbody { display: grid; gap: 12px; }
+  .foodTable tbody tr { display: grid; gap: 12px; padding: 18px; border: 1px solid #eadde1; border-radius: 12px; background: white; }
+  .foodTable td { display: block; min-width: 0; padding: 0; border: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+  .foodTable td:first-child { font-size: 17px; font-weight: 600; color: #432b33; }
+  .foodTable td:not(:first-child)::before { content: attr(data-label); display: block; margin-bottom: 3px; color: #8a7c82; font-size: 10px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; }
+  .foodTable td:last-child { color: #79616a; font-size: 12px; }
+  .foodEditorDialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 14px; }
+  .foodEditorDialog .foodForm { padding: 24px 20px; }
+  .foodEditorDialog .foodActions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .foodEditorDialog .foodActions button { flex: 1 1 120px; min-height: 46px; }
+  .foodPage .foodDialogClose { top: 12px; right: 12px; width: 44px; height: 44px; }
+  .foodEditorDialog h2 { margin-right: 44px; }
+  .pinDialog { width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 24px 20px; }
+  .pinDialog .foodActions { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .pinDialog .foodActions button { width: 100%; min-height: 44px; }
+  .pinNumpad { width: 100%; max-width: 270px; }
+}
