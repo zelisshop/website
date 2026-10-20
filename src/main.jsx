@@ -2302,7 +2302,7 @@ function App() {
   }, []);
 
   const pathname = window.location.pathname.replace(/\/+$/, '');
-  if (pathname === '/vendor' || pathname === '/rte-food') return <FoodPage vendorMode={pathname === '/vendor'} />;
+  if (pathname === '/vendor' || /^\/vendor\/\d+$/.test(pathname) || pathname === '/rte-food') return <FoodPage vendorMode={pathname !== '/rte-food'} />;
 
   return isAdminPage ? (
     <AdminPage content={content} setContent={setContent} previewContent={content} />

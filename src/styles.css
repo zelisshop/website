@@ -5451,3 +5451,83 @@ a {
 .foodPage .pinNumpad button:focus-visible { outline: 3px solid #c995a6; outline-offset: 2px; }
 .foodPage .pinNumpad button:disabled { cursor: default; opacity: .4; }
 @media (max-height: 740px) { .pinDialog { padding: 22px; } .pinBadge { display: none; } .pinDialog h2 { margin-top: 0; } .pinDialog label { margin-top: 14px; } .pinNumpad { margin-top: 16px; gap: 8px; } .foodPage .pinNumpad button { min-height: 44px; } }
+
+.foodEditorDialog { position: fixed; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; overflow-y: auto; border: 1px solid #eadde1; border-radius: 18px; background: #fffaf8; color: #3f2830; box-shadow: 0 24px 80px rgba(46, 14, 26, .24); }
+.foodEditorDialog::backdrop { background: rgba(39, 17, 26, .5); backdrop-filter: blur(5px); }
+.foodEditorDialog .foodForm { max-width: none; margin: 0; padding: 30px; border: 0; border-radius: 0; background: transparent; }
+.foodEditorDialog h2 { margin: 0 36px 24px 0; font: 28px Georgia, serif; }
+.foodEditorDialog .foodActions { margin-bottom: 0; justify-content: flex-end; }
+.foodPage .foodDialogClose { position: absolute; top: 15px; right: 15px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: #f3e4e9; color: #81253f; font-size: 24px; line-height: 1; }
+.foodEditorDialog input:focus-visible, .foodEditorDialog select:focus-visible, .foodDialogClose:focus-visible { outline: 2px solid #a6667c; outline-offset: 3px; }
+@media (max-width: 520px) { .foodEditorDialog .foodForm { padding: 24px; } .foodEditorDialog h2 { font-size: 25px; } }
+
+.foodPage a.vendorTile { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 22px 16px; border: 1px solid #eadde1; border-radius: 14px; background: white; color: #704553; text-align: center; overflow-wrap: anywhere; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.foodPage a.vendorTile:hover { border-color: #bb8f9e; box-shadow: 0 8px 24px #5b001810; }
+.foodPage a.vendorTile:focus-visible, .vendorBackLink:focus-visible { outline: 3px solid #c995a6; outline-offset: 3px; }
+.foodPage .vendorTile .vendorViewLabel { font-size: 12px; color: #81253f; margin-top: 4px; }
+.vendorBackLink { display: block; width: fit-content; margin: 18px 0; color: #81253f; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.vendorFoodSummary { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 32px 0 20px; }
+.vendorFoodSummary h2 { margin: 0; font: 26px Georgia, serif; }
+.vendorFoodSummary > span { color: #8a7c82; font-size: 13px; }
+.vendorFoodGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px; }
+.vendorFoodCard { display: flex; flex-direction: column; align-items: flex-start; padding: 24px; border: 1px solid #eadde1; border-radius: 14px; background: white; min-width: 0; }
+.vendorFoodStatus { padding: 5px 9px; border-radius: 6px; background: #edf4ea; color: #456139; font-size: 11px; }
+.vendorFoodStatus.soldOut { background: #f5e6e9; color: #8b1530; }
+.vendorFoodCard h3 { margin: 18px 0; color: #432b33; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
+.vendorFoodCount { display: flex; align-items: baseline; gap: 10px; margin-top: auto; }
+.vendorFoodCount strong { color: #81253f; font-size: 38px; line-height: 1.2; font-weight: 500; }
+.vendorFoodCount span { font-size: 13px; color: #8a7c82; }
+.vendorFoodCard > p { color: #8a7c82; font-size: 11px; line-height: 1.6; margin: 16px 0 0; }
+.vendorFoodCard .foodActions { margin: 18px 0 0; width: 100%; }
+.vendorFoodCard .foodActions button { width: 100%; }
+@media (max-width: 520px) { .vendorFoodGrid { grid-template-columns: minmax(0, 1fr); gap: 14px; } .vendorFoodCard { padding: 20px; } }
+
+/* Keep widget dimensions consistent, including incomplete rows. */
+.vendorGrid,
+.vendorFoodGrid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 240px));
+  grid-auto-rows: 1fr;
+  justify-content: start;
+  align-items: stretch;
+  gap: 20px;
+}
+.foodPage a.vendorTile { width: 100%; height: 100%; min-width: 0; min-height: 240px; }
+.vendorFoodCard { width: 100%; height: 100%; min-height: 320px; }
+@media (max-width: 520px) {
+  .vendorGrid, .vendorFoodGrid { gap: 14px; }
+}
+
+/* Standard back navigation above the vendor heading. */
+.foodPage .vendorBackLink {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: fit-content;
+  min-height: 48px;
+  margin: 0 0 28px;
+  padding: 12px 18px;
+  border: 1px solid #c9b8be;
+  border-radius: 8px;
+  background: #fff;
+  color: #492b36;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(61, 31, 43, .08);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.foodPage .vendorBackLink svg { width: 20px; height: 20px; flex-shrink: 0; }
+.foodPage .vendorBackLink:hover { background: #f5ecef; border-color: #926576; }
+.foodPage .vendorBackLink:active { background: #eadce1; }
+.foodPage .vendorBackLink:focus-visible { outline: 3px solid #b58193; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .foodPage .vendorBackLink { transition: none; }
+}
+
+.foodDeleteArea { margin-top: 24px; padding-top: 18px; border-top: 1px solid #eadde1; }
+.foodDeleteArea > p { margin: 0 0 12px; color: #8f263a; font-size: 13px; line-height: 1.6; }
+.foodPage .foodDeleteButton, .foodPage .foodActions .foodDeleteButton { min-height: 44px; padding: 10px 16px; border: 1px solid #e3aeb9; border-radius: 8px; background: #fff0f2; color: #a01e36; font-size: 13px; font-weight: 600; cursor: pointer; }
+.foodPage .foodDeleteButton:hover:not(:disabled), .foodPage .foodActions .foodDeleteButton:hover:not(:disabled) { background: #fce0e6; border-color: #bd5267; color: #86172c; }
+.foodDeleteArea .foodActions { justify-content: flex-start; }
