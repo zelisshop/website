@@ -281,7 +281,7 @@ export default function FoodPage({ vendorMode }) {
           {editMode && <div className="foodActions"><button type="button" onClick={() => edit(item)} disabled={saving}>Update food</button></div>}
         </article>)}</div>
       </>}
-      {!vendorMode && visible.length > 0 && <div className="foodTableWrap"><table id="food-results" className="foodTable"><thead><tr><th>Food name</th><th>Vendor</th><th>Updated time</th></tr></thead><tbody>{visible.map(item => <tr key={item.id}><td data-label="Food name">{item.food_name}</td><td data-label="Vendor">{item.vendor_name}</td><td data-label="Updated"><time dateTime={item.updated_time}>{new Date(item.updated_time).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })}</time></td></tr>)}</tbody></table></div>}
+      {!vendorMode && visible.length > 0 && <div className="foodTableWrap"><table id="food-results" className="foodTable"><thead><tr><th>Food name</th><th>Vendor</th><th>Updated time</th></tr></thead><tbody>{visible.map(item => <tr key={item.id}><td data-label="Food name"><div className="rteFoodName">{item.food_name}<span className="rteAvailable"><span className="rteAvailableDot" aria-hidden="true" />Available</span></div></td><td data-label="Vendor">{item.vendor_name}</td><td data-label="Updated"><time dateTime={item.updated_time}>{new Date(item.updated_time).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })}</time></td></tr>)}</tbody></table></div>}
     </section>
     {vendorMode && <dialog ref={pinDialog} className="pinDialog" onCancel={event => { event.preventDefault(); if (!unlocking) { setPinOpen(false); setCode(''); } }}>
       <form onSubmit={unlock}>

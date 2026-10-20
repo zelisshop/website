@@ -5599,3 +5599,7 @@ a {
 .foodPage .vendorWidget .vendorTile { flex: 1; height: auto; }
 .vendorWidget .foodActions { margin: 10px 0 0; }
 .vendorWidget .foodActions button { width: 100%; }
+
+.rteFoodName { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.rteAvailable { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: #eaf5ec; color: #25633a; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.rteAvailableDot { display: inline-block; flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #29934c; }
