@@ -228,9 +228,8 @@ export default function FoodPage({ vendorMode }) {
     <header className="foodHeader"><a className="brand" href="/">Zelis</a><nav><a href="/">Back to shop</a>{vendorMode && <a href="/admin">Admin dashboard</a>}<a href={vendorMode ? '/rte-food' : '/vendor'}>{vendorMode ? 'Customer view' : 'Vendor stock'}</a></nav></header>
     <section className="foodContent">
       {vendorDetail && <a className="vendorBackLink" href="/vendor" onClick={event => followVendor(event)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m10 5-7 7 7 7M3 12h18" /></svg><span>Back to vendors</span></a>}
-      <span className="foodEyebrow">{vendorMode ? 'Vendor stock management' : 'Freshly prepared · Ready when you are'}</span>
+      {vendorMode && <span className="foodEyebrow">Vendor stock management</span>}
       <h1>{vendorDetail ? (selected || (loading ? 'Loading vendor…' : 'Vendor not found')) : vendorMode ? 'Our vendors' : 'Ready To Eat Food'}</h1>
-      {!vendorMode && <p>Explore what is available from our local vendors. Stock is refreshed every minute.</p>}
       <div className="foodActions foodPageActions">{vendorMode && <button className={editMode ? '' : 'foodPrimaryButton'} disabled={saving} onClick={() => { if (editMode) { leaveEditMode(); } else { setPinError(''); setCode(''); setPinOpen(true); } }}>{editMode ? 'Exit edit mode' : 'Enter edit mode'}</button>}{editMode && <>{!vendorDetail && <button className="foodPrimaryButton foodAddButton" onClick={() => editVendor({ vendor_name: '' })} disabled={saving}>Add vendor</button>}{selected && <><button className="foodPrimaryButton foodAddButton" onClick={() => edit({ vendor_name: selected, food_name: '', count: 0 })} disabled={saving}>Add food</button><button onClick={() => editVendor(vendorRecords.find(v => v.vendor_name === selected))} disabled={saving || !vendorRecords.some(v => v.vendor_name === selected)}>Edit vendor</button></>}</>}</div>
       {!vendorMode && <div className="foodSearch">
         <label htmlFor="food-search">Find your next meal</label>
