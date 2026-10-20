@@ -286,9 +286,9 @@ export default function FoodPage({ vendorMode }) {
         <h2>Enter edit mode</h2>
         <p>Enter your four-digit admin PIN to manage vendors and food.</p>
         <label htmlFor="vendor-pin">Admin PIN</label>
-        <input id="vendor-pin" className="pinInput" type="password" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} minLength={4} autoComplete="off" required autoFocus value={code} disabled={unlocking} onChange={event => { setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 4)); setPinError(''); }} aria-describedby={pinError ? 'pin-error' : undefined} aria-invalid={Boolean(pinError)} />
+        <input id="vendor-pin" className="pinInput" type="password" inputMode="none" readOnly tabIndex={-1} autoComplete="off" value={code} aria-label="PIN entered using the number pad" aria-describedby={pinError ? 'pin-error' : undefined} aria-invalid={Boolean(pinError)} />
         <div className="pinNumpad" role="group" aria-label="PIN number pad">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(digit => <button key={digit} type="button" disabled={unlocking || code.length >= 4} onClick={() => { setCode(value => (value + digit).slice(0, 4)); setPinError(''); }}>{digit}</button>)}
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(digit => <button key={digit} type="button" autoFocus={digit === '1'} disabled={unlocking || code.length >= 4} onClick={() => { setCode(value => (value + digit).slice(0, 4)); setPinError(''); }}>{digit}</button>)}
           <button type="button" className="pinUtility" disabled={unlocking || !code} onClick={() => { setCode(''); setPinError(''); }}>Clear</button>
           <button type="button" disabled={unlocking || code.length >= 4} onClick={() => { setCode(value => (value + '0').slice(0, 4)); setPinError(''); }}>0</button>
           <button type="button" className="pinUtility" aria-label="Delete last PIN digit" disabled={unlocking || !code} onClick={() => { setCode(value => value.slice(0, -1)); setPinError(''); }}>⌫</button>
