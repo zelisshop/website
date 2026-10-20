@@ -5594,3 +5594,8 @@ a {
   .pinDialog .foodActions button { width: 100%; min-height: 44px; }
   .pinNumpad { width: 100%; max-width: 270px; }
 }
+
+.vendorWidget { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.foodPage .vendorWidget .vendorTile { flex: 1; height: auto; }
+.vendorWidget .foodActions { margin: 10px 0 0; }
+.vendorWidget .foodActions button { width: 100%; }

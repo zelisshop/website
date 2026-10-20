@@ -26,12 +26,16 @@ export async function initializeVendors(db) {
   if (names.has('vendor')) await db.execute('RENAME TABLE vendor TO vendor_food');
   await db.execute(vendorFoodSchema);
   await db.execute(vendorsSchema);
+  await db.execute(`CREATE TABLE IF NOT EXISTS vendor_edit_sessions (
+    token_hash CHAR(64) PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
   await db.execute('INSERT IGNORE INTO vendors (vendor_name) SELECT DISTINCT vendor_name FROM vendor_food');
 }
 
 export function registerVendorRoutes(app, getConnection, requireAuth) {
   const attempts = new Map();
-  const editSessions = new Map();
+  const sessionHash = token => crypto.createHash('sha256').update(token).digest('hex');
   function verifyCode(req, res, next) {
     const now = Date.now();
     for (const [key, value] of attempts) if (value.until < now) attempts.delete(key);
@@ -50,31 +54,46 @@ export function registerVendorRoutes(app, getConnection, requireAuth) {
     attempts.delete(key);
     return next();
   }
-  function authorize(req, res, next) {
+  async function authorize(req, res, next) {
     const token = req.headers['x-vendor-session'];
     if (token) {
-      const expiresAt = editSessions.get(token);
-      if (!expiresAt || expiresAt <= Date.now()) {
-        editSessions.delete(token);
-        return res.status(401).json({ error: 'Edit mode expired. Enter your PIN again.' });
-      }
+      let db;
+      try {
+        db = await getConnection();
+        const [rows] = await db.execute('SELECT token_hash FROM vendor_edit_sessions WHERE token_hash=?', [sessionHash(token)]);
+        if (!rows.length) return res.status(401).json({ error: 'Edit mode has ended. Enter your PIN again.' });
+      } catch { return res.status(503).json({ error: 'Unable to verify edit mode. Please try again.' }); }
+      finally { if (db) await db.end(); }
       return next();
     }
     if (req.headers.authorization && requireAuth) return requireAuth(req, res, next);
     return verifyCode(req, res, next);
   }
-  app.post('/api/vendor/edit-session', verifyCode, (req, res) => {
+  app.post('/api/vendor/edit-session', verifyCode, async (req, res) => {
     if (!/^[0-9]{4}$/.test(req.body.code)) return res.status(400).json({ error: 'Enter a four-digit PIN.' });
-    const now = Date.now();
-    for (const [token, expiresAt] of editSessions) if (expiresAt <= now) editSessions.delete(token);
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = now + 60 * 60 * 1000;
-    editSessions.set(token, expiresAt);
-    res.set('Cache-Control', 'no-store').json({ token, expiresAt });
+    let db;
+    try {
+      const token = crypto.randomBytes(32).toString('hex');
+      db = await getConnection();
+      await db.execute('INSERT INTO vendor_edit_sessions (token_hash) VALUES (?)', [sessionHash(token)]);
+      res.set('Cache-Control', 'no-store').json({ token });
+    } catch { res.status(503).json({ error: 'Unable to save edit mode. Please try again.' }); }
+    finally { if (db) await db.end(); }
   });
-  app.post('/api/vendor/exit-edit-mode', (req, res) => {
-    editSessions.delete(req.headers['x-vendor-session']);
-    res.json({ ok: true });
+  app.get('/api/vendor/edit-session', authorize, (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ ok: true });
+  });
+  app.post('/api/vendor/exit-edit-mode', async (req, res) => {
+    let db;
+    try {
+      const token = req.headers['x-vendor-session'];
+      if (token) {
+        db = await getConnection();
+        await db.execute('DELETE FROM vendor_edit_sessions WHERE token_hash=?', [sessionHash(token)]);
+      }
+      res.json({ ok: true });
+    } catch { res.status(503).json({ error: 'Unable to exit edit mode. Please try again.' }); }
+    finally { if (db) await db.end(); }
   });
   app.get(['/api/vendor', '/api/rte-food'], async (req, res) => {
     let db;

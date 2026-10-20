@@ -1,5 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+const EDIT_SESSION_KEY = 'zelis_vendor_edit_session';
+function getSavedEditSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(EDIT_SESSION_KEY) || 'null');
+    return typeof session?.token === 'string' && /^[a-f0-9]{64}$/.test(session.token) ? session : null;
+  } catch { return null; }
+}
+
 async function readFoodResponse(response) {
   if (!response.headers.get('content-type')?.includes('application/json')) {
     throw new Error('Food management is unavailable. Restart the server, refresh this page, and try again.');
@@ -39,7 +47,7 @@ export default function FoodPage({ vendorMode }) {
   const [items, setItems] = useState([]);
   const [vendorRecords, setVendorRecords] = useState([]);
   const [vendorEditing, setVendorEditing] = useState(null);
-  const [editSession, setEditSession] = useState(null);
+  const [editSession, setEditSession] = useState(getSavedEditSession);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
@@ -95,28 +103,47 @@ export default function FoodPage({ vendorMode }) {
   }
   const vendors = [...new Set([...vendorRecords.map(v => v.vendor_name), ...items.map(item => item.vendor_name)])];
   const authHeaders = { 'Content-Type': 'application/json', ...(editSession ? { 'X-Vendor-Session': editSession.token } : {}) };
-  function leaveEditMode() {
-    if (editSession) fetch('/api/vendor/exit-edit-mode', { method: 'POST', headers: authHeaders }).catch(() => {});
+  function clearEditSession() {
+    localStorage.removeItem(EDIT_SESSION_KEY);
     setEditSession(null); setEditing(null); setVendorEditing(null); setCode('');
+  }
+  async function leaveEditMode() {
+    setSaving(true); setError('');
+    try {
+      const response = await fetch('/api/vendor/exit-edit-mode', { method: 'POST', headers: authHeaders });
+      const data = await readFoodResponse(response);
+      if (!response.ok) throw new Error(data.error);
+      clearEditSession(); setMessage('View mode is on.');
+    } catch (err) { setError(err.message || 'Unable to exit edit mode. Please try again.'); }
+    finally { setSaving(false); }
   }
   function checkSession(response) {
     if (response.status === 401) {
-      leaveEditMode();
-      throw new Error('Edit mode expired. Enter your PIN again to continue.');
+      clearEditSession();
+      throw new Error('Edit mode has ended. Enter your PIN again to continue.');
     }
   }
+  useEffect(() => {
+    const syncSession = event => {
+      if (event.key === EDIT_SESSION_KEY || event.key === null) {
+        setEditSession(getSavedEditSession()); setEditing(null); setVendorEditing(null);
+      }
+    };
+    window.addEventListener('storage', syncSession);
+    return () => window.removeEventListener('storage', syncSession);
+  }, []);
+  useEffect(() => {
+    if (!vendorMode || !editSession) return;
+    let active = true;
+    fetch('/api/vendor/edit-session', { headers: { 'X-Vendor-Session': editSession.token } })
+      .then(response => { if (active && response.status === 401) clearEditSession(); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [vendorMode, editSession?.token]);
   useEffect(() => {
     if (pinOpen) pinDialog.current?.showModal();
     else pinDialog.current?.close();
   }, [pinOpen]);
-  useEffect(() => {
-    if (!editSession) return;
-    const timer = setTimeout(() => {
-      setEditSession(null); setEditing(null); setVendorEditing(null);
-      setMessage('Edit mode expired. Enter your PIN again to continue.');
-    }, Math.max(0, editSession.expiresAt - Date.now()));
-    return () => clearTimeout(timer);
-  }, [editSession]);
   async function unlock(event) {
     event.preventDefault(); setUnlocking(true); setPinError('');
     try {
@@ -125,8 +152,9 @@ export default function FoodPage({ vendorMode }) {
       });
       const data = await readFoodResponse(response);
       if (!response.ok) throw new Error(data.error);
-      if (typeof data.token !== 'string' || !Number.isFinite(data.expiresAt)) throw new Error('Unable to unlock edit mode. Please restart the server and try again.');
-      setEditSession(data); setPinOpen(false); setCode(''); setError('');
+      if (typeof data.token !== 'string' || !/^[a-f0-9]{64}$/.test(data.token)) throw new Error('Unable to unlock edit mode. Please restart the server and try again.');
+      localStorage.setItem(EDIT_SESSION_KEY, JSON.stringify({ token: data.token }));
+      setEditSession({ token: data.token }); setPinOpen(false); setCode(''); setError('');
       setMessage('Edit mode is on. You can manage vendors and food.');
     } catch (err) { setPinError(err.message || 'Unable to unlock edit mode.'); }
     finally { setUnlocking(false); }
@@ -166,12 +194,13 @@ export default function FoodPage({ vendorMode }) {
       const data = await readFoodResponse(response);
       checkSession(response);
       if (!response.ok) throw new Error(data.error);
+      const isNewVendor = !vendorEditing.id;
       const name = vendorEditing.vendor_name.trim();
       setVendorEditing(null); setCode('');
       const refreshed = await load();
       const vendor = refreshed?.vendors.find(v => v.vendor_name === name);
-      if (vendor) openVendor(vendor.id);
-      setMessage('Vendor saved. You can now add food for this vendor.');
+      if (isNewVendor && vendor) openVendor(vendor.id);
+      setMessage(isNewVendor ? 'Vendor added. You can now add food for this vendor.' : 'Vendor updated.');
     } catch (err) { setError(err.message || 'Unable to save vendor.'); }
     finally { setSaving(false); }
   }
@@ -202,7 +231,7 @@ export default function FoodPage({ vendorMode }) {
       <span className="foodEyebrow">{vendorMode ? 'Vendor stock management' : 'Freshly prepared · Ready when you are'}</span>
       <h1>{vendorDetail ? (selected || (loading ? 'Loading vendor…' : 'Vendor not found')) : vendorMode ? 'Our vendors' : 'Ready To Eat Food'}</h1>
       {!vendorMode && <p>Explore what is available from our local vendors. Stock is refreshed every minute.</p>}
-      <div className="foodActions foodPageActions">{vendorMode && <button className={editMode ? '' : 'foodPrimaryButton'} disabled={saving} onClick={() => { if (editMode) { leaveEditMode(); setMessage('View mode is on.'); } else { setPinError(''); setCode(''); setPinOpen(true); } }}>{editMode ? 'Exit edit mode' : 'Enter edit mode'}</button>}{editMode && <>{!vendorDetail && <button className="foodPrimaryButton foodAddButton" onClick={() => editVendor({ vendor_name: '' })} disabled={saving}>Add vendor</button>}{selected && <><button className="foodPrimaryButton foodAddButton" onClick={() => edit({ vendor_name: selected, food_name: '', count: 0 })} disabled={saving}>Add food</button><button onClick={() => editVendor(vendorRecords.find(v => v.vendor_name === selected))} disabled={saving || !vendorRecords.some(v => v.vendor_name === selected)}>Edit vendor</button></>}</>}</div>
+      <div className="foodActions foodPageActions">{vendorMode && <button className={editMode ? '' : 'foodPrimaryButton'} disabled={saving} onClick={() => { if (editMode) { leaveEditMode(); } else { setPinError(''); setCode(''); setPinOpen(true); } }}>{editMode ? 'Exit edit mode' : 'Enter edit mode'}</button>}{editMode && <>{!vendorDetail && <button className="foodPrimaryButton foodAddButton" onClick={() => editVendor({ vendor_name: '' })} disabled={saving}>Add vendor</button>}{selected && <><button className="foodPrimaryButton foodAddButton" onClick={() => edit({ vendor_name: selected, food_name: '', count: 0 })} disabled={saving}>Add food</button><button onClick={() => editVendor(vendorRecords.find(v => v.vendor_name === selected))} disabled={saving || !vendorRecords.some(v => v.vendor_name === selected)}>Edit vendor</button></>}</>}</div>
       {!vendorMode && <div className="foodSearch">
         <label htmlFor="food-search">Find your next meal</label>
         <div className="foodSearchField">
@@ -217,7 +246,10 @@ export default function FoodPage({ vendorMode }) {
       {message && <p role="status">{message}</p>}
       {loading && <p role="status">Loading availability…</p>}
       {!loading && !error && !(vendorMode ? vendors.length : items.length) && !vendorDetail && <p>{vendorMode ? (editMode ? 'No vendors yet. Choose Add vendor to get started.' : 'No vendors yet. Enter edit mode to add a vendor.') : 'No ready-to-eat food is available right now. Please check again soon.'}</p>}
-      {vendorMode && !vendorDetail && <div className="vendorGrid">{vendorRecords.map(vendor => <a key={vendor.id} className="vendorTile" href={`/vendor/${vendor.id}`} onClick={event => followVendor(event, vendor.id)}><span aria-hidden="true">🍽</span><strong>{vendor.vendor_name}</strong><small>{items.filter(item => item.vendor_name === vendor.vendor_name).length} food items</small><span className="vendorViewLabel">View food</span></a>)}</div>}
+      {vendorMode && !vendorDetail && <div className="vendorGrid">{vendorRecords.map(vendor => <div className="vendorWidget" key={vendor.id}>
+        <a className="vendorTile" href={`/vendor/${vendor.id}`} onClick={event => followVendor(event, vendor.id)}><span aria-hidden="true">🍽</span><strong>{vendor.vendor_name}</strong><small>{items.filter(item => item.vendor_name === vendor.vendor_name).length} food items</small><span className="vendorViewLabel">View food</span></a>
+        {editMode && <div className="foodActions"><button type="button" disabled={saving} onClick={() => editVendor(vendor)} aria-label={`Edit vendor ${vendor.vendor_name}`}>Edit vendor</button></div>}
+      </div>)}</div>}
       {vendorDetail && !loading && !error && !selectedVendor && <p>This vendor could not be found. Return to all vendors to choose another.</p>}
       {editMode && vendorEditing && <FoodEditorDialog title={vendorEditing.id ? 'Edit vendor' : 'Add vendor'} saving={saving} onClose={() => { setVendorEditing(null); setError(''); }}><form className="foodForm" onSubmit={saveVendor}>
         <h2>{vendorEditing.id ? 'Edit vendor' : 'Add vendor'}</h2>
