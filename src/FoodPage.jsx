@@ -54,6 +54,7 @@ export default function FoodPage({ vendorMode }) {
   const pinDialog = useRef(null);
   const editMode = vendorMode && Boolean(editSession);
   const [vendorId, setVendorId] = useState(() => window.location.pathname.match(/^\/vendor\/(\d+)\/?$/)?.[1] || '');
+  const [foodAnchor, setFoodAnchor] = useState(() => window.location.hash.slice(1));
   const selectedVendor = vendorRecords.find(vendor => String(vendor.id) === vendorId);
   const selected = selectedVendor?.vendor_name || '';
   const vendorDetail = vendorMode && Boolean(vendorId);
@@ -87,21 +88,37 @@ export default function FoodPage({ vendorMode }) {
     const onPopState = () => {
       setSearch('');
       setVendorId(window.location.pathname.match(/^\/vendor\/(\d+)\/?$/)?.[1] || '');
+      setFoodAnchor(window.location.hash.slice(1));
       setEditing(null); setVendorEditing(null); setError(''); setMessage('');
     };
     window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    window.addEventListener('hashchange', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('hashchange', onPopState);
+    };
   }, []);
-  function openVendor(id = '', replace = false) {
-    const path = id ? `/vendor/${id}` : '/vendor';
-    if (window.location.pathname !== path) window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+  useEffect(() => {
+    if (!vendorDetail || loading || !foodAnchor) return;
+    const card = document.getElementById(foodAnchor);
+    if (!card) return;
+    const frame = requestAnimationFrame(() => {
+      card.focus({ preventScroll: true });
+      card.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [vendorDetail, vendorId, loading, foodAnchor, items]);
+  function openVendor(id = '', replace = false, anchor = '') {
+    const path = (id ? `/vendor/${id}` : '/vendor') + (anchor ? `#${anchor}` : '');
+    if (window.location.pathname + window.location.hash !== path) window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
     if (String(id) !== vendorId) setSearch('');
+    setFoodAnchor(anchor);
     setVendorId(String(id)); setEditing(null); setVendorEditing(null); setError(''); setMessage('');
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (!anchor) window.scrollTo({ top: 0, behavior: 'instant' });
   }
-  function followVendor(event, id = '') {
+  function followVendor(event, id = '', anchor = '') {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault(); openVendor(id);
+    event.preventDefault(); openVendor(id, false, anchor);
   }
   const vendors = [...new Set([...vendorRecords.map(v => v.vendor_name), ...items.map(item => item.vendor_name)])];
   const authHeaders = { 'Content-Type': 'application/json', ...(editSession ? { 'X-Vendor-Session': editSession.token } : {}) };
@@ -224,7 +241,7 @@ export default function FoodPage({ vendorMode }) {
   }
   const query = search.trim().toLocaleLowerCase();
   const visible = vendorMode
-    ? items.filter(item => item.vendor_name === selected && item.food_name.toLocaleLowerCase().includes(query)).sort((a, b) => Number(Number(b.count) > 0) - Number(Number(a.count) > 0))
+    ? items.filter(item => (!vendorDetail || item.vendor_name === selected) && item.food_name.toLocaleLowerCase().includes(query)).sort((a, b) => Number(Number(b.count) > 0) - Number(Number(a.count) > 0))
     : items.filter(item => `${item.food_name} ${item.vendor_name}`.toLocaleLowerCase().includes(query));
   return <main className="foodPage">
     <header className="foodHeader"><a className="brand" href="/">Zelis</a><nav><a href="/">Back to shop</a>{vendorMode && <a href="/admin">Admin dashboard</a>}<a href={vendorMode ? '/rte-food' : '/vendor'}>{vendorMode ? 'Customer view' : 'Vendor stock'}</a></nav></header>
@@ -233,11 +250,11 @@ export default function FoodPage({ vendorMode }) {
       {vendorMode && <span className="foodEyebrow">Vendor stock management</span>}
       <h1>{vendorDetail ? (selected || (loading ? 'Loading vendor…' : 'Vendor not found')) : vendorMode ? 'Our vendors' : 'Ready To Eat Food'}</h1>
       <div className="foodActions foodPageActions">{vendorMode && <button className={editMode ? '' : 'foodPrimaryButton'} disabled={saving} onClick={() => { if (editMode) { leaveEditMode(); } else { setPinError(''); setCode(''); setPinOpen(true); } }}>{editMode ? 'Exit edit mode' : 'Enter edit mode'}</button>}{editMode && <>{!vendorDetail && <button className="foodPrimaryButton foodAddButton" onClick={() => editVendor({ vendor_name: '' })} disabled={saving}>Add vendor</button>}{selected && <><button className="foodPrimaryButton foodAddButton" onClick={() => edit({ vendor_name: selected, food_name: '', count: 0 })} disabled={saving}>Add food</button><button onClick={() => editVendor(vendorRecords.find(v => v.vendor_name === selected))} disabled={saving || !vendorRecords.some(v => v.vendor_name === selected)}>Edit vendor</button></>}</>}</div>
-      {(!vendorMode || (vendorDetail && selected)) && <div className="foodSearch">
-        <label htmlFor="food-search">{vendorMode ? 'Search this vendor’s food' : 'Find your next meal'}</label>
+      {(!vendorDetail || selected) && <div className="foodSearch">
+        <label htmlFor="food-search">{vendorMode ? (vendorDetail ? 'Search this vendor’s food' : 'Search food across all vendors') : 'Find your next meal'}</label>
         <div className="foodSearchField">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
-          <input id="food-search" type="search" placeholder={vendorMode ? 'Search food name…' : 'Search food or vendor name…'} value={search} onChange={event => setSearch(event.target.value)} aria-controls={vendorMode ? 'vendor-food-results' : 'food-results'} />
+          <input id="food-search" type="search" placeholder={vendorMode ? 'Search food name…' : 'Search food or vendor name…'} value={search} onChange={event => setSearch(event.target.value)} aria-controls={vendorMode ? (vendorDetail ? 'vendor-food-results' : 'vendor-food-search-results') : 'food-results'} />
           {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear food search">Clear</button>}
         </div>
         {!loading && !error && items.length > 0 && <p role="status">{visible.length} {visible.length === 1 ? 'food item' : 'food items'}{query ? ' found' : vendorMode ? ' listed' : ' available'}</p>}
@@ -246,6 +263,17 @@ export default function FoodPage({ vendorMode }) {
       {error && !(editMode && (vendorEditing || editing)) && <p role="alert" className="foodError">{error}</p>}
       {message && <p role="status">{message}</p>}
       {loading && <p role="status">Loading availability…</p>}
+      {vendorMode && !vendorDetail && <div id="vendor-food-search-results" className="vendorFoodSearchResults">
+        {query && !loading && !error && (visible.length ? <ul aria-label="Food search results">{visible.map(item => {
+          const vendor = vendorRecords.find(record => record.vendor_name === item.vendor_name);
+          if (!vendor) return null;
+          return <li key={item.id}><a href={`/vendor/${vendor.id}#food-${item.id}`} onClick={event => followVendor(event, vendor.id, `food-${item.id}`)}>
+            <span className="vendorFoodSearchName"><strong>{item.food_name}</strong><small>{item.vendor_name}</small></span>
+            <span className={`vendorFoodStatus ${Number(item.count) === 0 ? 'soldOut' : ''}`}>{Number(item.count) === 0 ? 'Sold out' : `${item.count} in stock`}</span>
+            <span className="vendorFoodSearchArrow" aria-hidden="true">→</span>
+          </a></li>;
+        })}</ul> : <p role="status">No food matches “{search.trim()}”. Try another food name.</p>)}
+      </div>}
       {!loading && !error && !(vendorMode ? vendors.length : items.length) && !vendorDetail && <p>{vendorMode ? (editMode ? 'No vendors yet. Choose Add vendor to get started.' : 'No vendors yet. Enter edit mode to add a vendor.') : 'No ready-to-eat food is available right now. Please check again soon.'}</p>}
       {vendorMode && !vendorDetail && <div className="vendorGrid">{vendorRecords.map(vendor => <div className="vendorWidget" key={vendor.id}>
         <a className="vendorTile" href={`/vendor/${vendor.id}`} onClick={event => followVendor(event, vendor.id)}><span aria-hidden="true">🍽</span><strong>{vendor.vendor_name}</strong><small>{items.filter(item => item.vendor_name === vendor.vendor_name).length} food items</small><span className="vendorViewLabel">View food</span></a>
@@ -273,7 +301,7 @@ export default function FoodPage({ vendorMode }) {
         {!loading && !error && !visible.length && (query
           ? <p role="status">No food matches “{search.trim()}”. Try another food name or clear your search.</p>
           : <p>No food added for this vendor yet.{editMode && ' Choose Add food to get started.'}</p>)}
-        <div id="vendor-food-results" className="vendorFoodGrid">{visible.map(item => <article className="vendorFoodCard" key={item.id}>
+        <div id="vendor-food-results" className="vendorFoodGrid">{visible.map(item => <article id={`food-${item.id}`} tabIndex={-1} className={`vendorFoodCard${foodAnchor === `food-${item.id}` ? ' vendorFoodHighlighted' : ''}`} key={item.id}>
           <span className={`vendorFoodStatus ${item.count === 0 ? 'soldOut' : ''}`}>{item.count === 0 ? 'Sold out' : 'Available'}</span>
           <h3>{item.food_name}</h3>
           <div className="vendorFoodCount"><strong>{item.count}</strong><span>in stock</span></div>

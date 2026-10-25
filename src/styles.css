@@ -5293,6 +5293,18 @@ a {
 .foodSearchField input::placeholder { color: #86767b; }
 .foodSearchField button { flex-shrink: 0; padding: 7px 10px; font-size: 12px; }
 .foodSearch > p { margin: 10px 0 0; color: #79616a; font-size: 13px; }
+.vendorFoodSearchResults { max-width: 760px; }
+.vendorFoodSearchResults ul { list-style: none; margin: 0 0 32px; padding: 0; display: grid; gap: 10px; }
+.vendorFoodSearchResults a { display: flex; align-items: center; gap: 14px; padding: 18px; border: 1px solid #eadde1; border-radius: 12px; background: #fff; color: #432b33; text-decoration: none; }
+.vendorFoodSearchResults a:hover { border-color: #bb8f9e; background: #fcf6f8; }
+.vendorFoodSearchResults a:focus-visible { outline: 3px solid #c995a6; outline-offset: 3px; }
+.vendorFoodSearchName { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.vendorFoodSearchName small { color: #79616a; }
+.vendorFoodSearchResults .vendorFoodStatus { flex-shrink: 0; }
+.vendorFoodSearchArrow { color: #81253f; }
+.vendorFoodCard { scroll-margin-block: 24px; }
+.vendorFoodCard.vendorFoodHighlighted { border-color: #8b1530; background: #fff8fa; box-shadow: 0 0 0 3px rgba(139, 21, 48, .14); }
+.vendorFoodCard:focus-visible { outline: 3px solid #c995a6; outline-offset: 3px; }
 .foodForm select { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #d8bbc2; border-radius: 4px; background: white; color: #3f2830; font: inherit; }
 
 /* Vendor management actions */
