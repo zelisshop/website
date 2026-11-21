@@ -5276,6 +5276,7 @@ a {
 .foodTable th, .foodTable td { padding: 18px; border-bottom: 1px solid #f1e7e9; overflow-wrap: anywhere; }
 .foodTable th { background: #f5e6e9; font-size: 12px; white-space: nowrap; }
 .foodTable td { font-size: 14px; }
+.foodTable .foodEditCell { width: 1%; text-align: right; }
 .stockCount { display: inline-block; background: #e9f2e7; color: #34562d; padding: 6px 10px; border-radius: 20px; white-space: nowrap; }
 .stockCount.soldOut { background: #f5e6e9; color: #8b1530; }
 .foodForm { padding: 24px; background: white; border: 1px solid #eadcde; border-radius: 8px; margin: 30px 0; max-width: 600px; }
@@ -5594,7 +5595,9 @@ a {
   .foodTable td { display: block; min-width: 0; padding: 0; border: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
   .foodTable td:first-child { font-size: 17px; font-weight: 600; color: #432b33; }
   .foodTable td:not(:first-child)::before { content: attr(data-label); display: block; margin-bottom: 3px; color: #8a7c82; font-size: 10px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; }
-  .foodTable td:last-child { color: #79616a; font-size: 12px; }
+  .foodTable td.foodEditCell { width: auto; }
+  .foodTable td.foodEditCell::before { display: none; }
+  .foodTable td[data-label="Updated"] { color: #79616a; font-size: 12px; }
   .foodEditorDialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 14px; }
   .foodEditorDialog .foodForm { padding: 24px 20px; }
   .foodEditorDialog .foodActions { display: flex; flex-wrap: wrap; gap: 10px; }

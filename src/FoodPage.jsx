@@ -52,7 +52,8 @@ export default function FoodPage({ vendorMode }) {
   const [pinError, setPinError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const pinDialog = useRef(null);
-  const editMode = vendorMode && Boolean(editSession);
+  const editMode = Boolean(editSession);
+  const loadVendorStock = vendorMode || editMode;
   const [vendorId, setVendorId] = useState(() => window.location.pathname.match(/^\/vendor\/(\d+)\/?$/)?.[1] || '');
   const [foodAnchor, setFoodAnchor] = useState(() => window.location.hash.slice(1));
   const selectedVendor = vendorRecords.find(vendor => String(vendor.id) === vendorId);
@@ -69,7 +70,7 @@ export default function FoodPage({ vendorMode }) {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(vendorMode ? '/api/vendor' : '/api/rte-food');
+      const response = await fetch(loadVendorStock ? '/api/vendor' : '/api/rte-food');
       const data = await readFoodResponse(response);
       if (!response.ok) throw new Error(data.error);
       setItems(data.items);
@@ -78,12 +79,12 @@ export default function FoodPage({ vendorMode }) {
     } catch (err) { setError(err.message || 'Unable to load food.'); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, [vendorMode]);
+  useEffect(() => { load(); }, [loadVendorStock]);
   useEffect(() => {
     if (vendorMode) return;
     const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
-  }, [vendorMode]);
+  }, [vendorMode, loadVendorStock]);
   useEffect(() => {
     const onPopState = () => {
       setSearch('');
@@ -99,7 +100,7 @@ export default function FoodPage({ vendorMode }) {
     };
   }, []);
   useEffect(() => {
-    if (!vendorDetail || loading || !foodAnchor) return;
+    if (!vendorDetail || loading || !foodAnchor || search.trim()) return;
     const card = document.getElementById(foodAnchor);
     if (!card) return;
     const frame = requestAnimationFrame(() => {
@@ -107,11 +108,11 @@ export default function FoodPage({ vendorMode }) {
       card.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center' });
     });
     return () => cancelAnimationFrame(frame);
-  }, [vendorDetail, vendorId, loading, foodAnchor, items]);
+  }, [vendorDetail, vendorId, loading, foodAnchor, items, search]);
   function openVendor(id = '', replace = false, anchor = '') {
     const path = (id ? `/vendor/${id}` : '/vendor') + (anchor ? `#${anchor}` : '');
     if (window.location.pathname + window.location.hash !== path) window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
-    if (String(id) !== vendorId) setSearch('');
+    if (anchor || String(id) !== vendorId) setSearch('');
     setFoodAnchor(anchor);
     setVendorId(String(id)); setEditing(null); setVendorEditing(null); setError(''); setMessage('');
     if (!anchor) window.scrollTo({ top: 0, behavior: 'instant' });
@@ -152,13 +153,13 @@ export default function FoodPage({ vendorMode }) {
     return () => window.removeEventListener('storage', syncSession);
   }, []);
   useEffect(() => {
-    if (!vendorMode || !editSession) return;
+    if (!editSession) return;
     let active = true;
     fetch('/api/vendor/edit-session', { headers: { 'X-Vendor-Session': editSession.token } })
       .then(response => { if (active && response.status === 401) clearEditSession(); })
       .catch(() => {});
     return () => { active = false; };
-  }, [vendorMode, editSession?.token]);
+  }, [editSession?.token]);
   useEffect(() => {
     if (pinOpen) pinDialog.current?.showModal();
     else pinDialog.current?.close();
@@ -194,8 +195,10 @@ export default function FoodPage({ vendorMode }) {
       const name = editing.vendor_name.trim();
       setEditing(null); setCode('');
       const refreshed = await load();
-      const vendor = refreshed?.vendors.find(v => v.vendor_name === name);
-      if (vendor) openVendor(vendor.id);
+      if (vendorMode) {
+        const vendor = refreshed?.vendors.find(v => v.vendor_name === name);
+        if (vendor) openVendor(vendor.id);
+      }
       setMessage('Food availability updated.');
     } catch (err) { setError(err.message || 'Unable to save food.'); }
     finally { setSaving(false); }
@@ -240,30 +243,34 @@ export default function FoodPage({ vendorMode }) {
     finally { setSaving(false); }
   }
   const query = search.trim().toLocaleLowerCase();
-  const visible = vendorMode
-    ? items.filter(item => (!vendorDetail || item.vendor_name === selected) && item.food_name.toLocaleLowerCase().includes(query)).sort((a, b) => Number(Number(b.count) > 0) - Number(Number(a.count) > 0))
-    : items.filter(item => `${item.food_name} ${item.vendor_name}`.toLocaleLowerCase().includes(query));
+  const vendorItems = vendorDetail
+    ? items.filter(item => item.vendor_name === selected)
+    : items;
+  const availableItems = vendorMode ? items : items.filter(item => Number(item.count) > 0);
+  const visible = (vendorMode && !query ? vendorItems : availableItems)
+    .filter(item => `${item.food_name} ${item.vendor_name}`.toLocaleLowerCase().includes(query));
+  if (vendorMode) visible.sort((a, b) => Number(b.count > 0) - Number(a.count > 0));
   return <main className="foodPage">
     <header className="foodHeader"><a className="brand" href="/">Zelis</a><nav><a href="/">Back to shop</a>{vendorMode && <a href="/admin">Admin dashboard</a>}<a href={vendorMode ? '/rte-food' : '/vendor'}>{vendorMode ? 'Customer view' : 'Vendor stock'}</a></nav></header>
     <section className="foodContent">
       {vendorDetail && <a className="vendorBackLink" href="/vendor" onClick={event => followVendor(event)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m10 5-7 7 7 7M3 12h18" /></svg><span>Back to vendors</span></a>}
       {vendorMode && <span className="foodEyebrow">Vendor stock management</span>}
       <h1>{vendorDetail ? (selected || (loading ? 'Loading vendor…' : 'Vendor not found')) : vendorMode ? 'Our vendors' : 'Ready To Eat Food'}</h1>
-      <div className="foodActions foodPageActions">{vendorMode && <button className={editMode ? '' : 'foodPrimaryButton'} disabled={saving} onClick={() => { if (editMode) { leaveEditMode(); } else { setPinError(''); setCode(''); setPinOpen(true); } }}>{editMode ? 'Exit edit mode' : 'Enter edit mode'}</button>}{editMode && <>{!vendorDetail && <button className="foodPrimaryButton foodAddButton" onClick={() => editVendor({ vendor_name: '' })} disabled={saving}>Add vendor</button>}{selected && <><button className="foodPrimaryButton foodAddButton" onClick={() => edit({ vendor_name: selected, food_name: '', count: 0 })} disabled={saving}>Add food</button><button onClick={() => editVendor(vendorRecords.find(v => v.vendor_name === selected))} disabled={saving || !vendorRecords.some(v => v.vendor_name === selected)}>Edit vendor</button></>}</>}</div>
-      {(!vendorDetail || selected) && <div className="foodSearch">
-        <label htmlFor="food-search">{vendorMode ? (vendorDetail ? 'Search this vendor’s food' : 'Search food across all vendors') : 'Find your next meal'}</label>
+      <div className="foodActions foodPageActions">{vendorMode && <button className={editMode ? '' : 'foodPrimaryButton'} disabled={saving} onClick={() => { if (editMode) { leaveEditMode(); } else { setPinError(''); setCode(''); setPinOpen(true); } }}>{editMode ? 'Exit edit mode' : 'Enter edit mode'}</button>}{vendorMode && editMode && <>{!vendorDetail && <button className="foodPrimaryButton foodAddButton" onClick={() => editVendor({ vendor_name: '' })} disabled={saving}>Add vendor</button>}{selected && <><button className="foodPrimaryButton foodAddButton" onClick={() => edit({ vendor_name: selected, food_name: '', count: 0 })} disabled={saving}>Add food</button><button onClick={() => editVendor(vendorRecords.find(v => v.vendor_name === selected))} disabled={saving || !vendorRecords.some(v => v.vendor_name === selected)}>Edit vendor</button></>}</>}</div>
+      <div className="foodSearch">
+        <label htmlFor="food-search">{vendorMode ? 'Search food across all vendors' : 'Find your next meal'}</label>
         <div className="foodSearchField">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
-          <input id="food-search" type="search" placeholder={vendorMode ? 'Search food name…' : 'Search food or vendor name…'} value={search} onChange={event => setSearch(event.target.value)} aria-controls={vendorMode ? (vendorDetail ? 'vendor-food-results' : 'vendor-food-search-results') : 'food-results'} />
+          <input id="food-search" type="search" placeholder="Search food or vendor name…" value={search} onChange={event => setSearch(event.target.value)} aria-controls={vendorMode ? (query || !vendorDetail ? 'vendor-food-search-results' : 'vendor-food-results') : 'food-results'} />
           {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear food search">Clear</button>}
         </div>
-        {!loading && !error && items.length > 0 && <p role="status">{visible.length} {visible.length === 1 ? 'food item' : 'food items'}{query ? ' found' : vendorMode ? ' listed' : ' available'}</p>}
-      </div>}
-      {!vendorMode && !loading && !error && items.length > 0 && !visible.length && <p>No food matches “{search.trim()}”. Try another food or vendor name.</p>}
+        {!loading && !error && availableItems.length > 0 && <p role="status">{visible.length} {visible.length === 1 ? 'food item' : 'food items'}{query ? ' found' : vendorMode ? ' listed' : ' available'}</p>}
+      </div>
+      {!vendorMode && !loading && !error && availableItems.length > 0 && !visible.length && <p>No food matches “{search.trim()}”. Try another food or vendor name.</p>}
       {error && !(editMode && (vendorEditing || editing)) && <p role="alert" className="foodError">{error}</p>}
       {message && <p role="status">{message}</p>}
       {loading && <p role="status">Loading availability…</p>}
-      {vendorMode && !vendorDetail && <div id="vendor-food-search-results" className="vendorFoodSearchResults">
+      {vendorMode && <div id="vendor-food-search-results" className="vendorFoodSearchResults">
         {query && !loading && !error && (visible.length ? <ul aria-label="Food search results">{visible.map(item => {
           const vendor = vendorRecords.find(record => record.vendor_name === item.vendor_name);
           if (!vendor) return null;
@@ -272,10 +279,10 @@ export default function FoodPage({ vendorMode }) {
             <span className={`vendorFoodStatus ${Number(item.count) === 0 ? 'soldOut' : ''}`}>{Number(item.count) === 0 ? 'Sold out' : `${item.count} in stock`}</span>
             <span className="vendorFoodSearchArrow" aria-hidden="true">→</span>
           </a></li>;
-        })}</ul> : <p role="status">No food matches “{search.trim()}”. Try another food name.</p>)}
+        })}</ul> : <p role="status">No food matches “{search.trim()}”. Try another food or vendor name.</p>)}
       </div>}
-      {!loading && !error && !(vendorMode ? vendors.length : items.length) && !vendorDetail && <p>{vendorMode ? (editMode ? 'No vendors yet. Choose Add vendor to get started.' : 'No vendors yet. Enter edit mode to add a vendor.') : 'No ready-to-eat food is available right now. Please check again soon.'}</p>}
-      {vendorMode && !vendorDetail && <div className="vendorGrid">{vendorRecords.map(vendor => <div className="vendorWidget" key={vendor.id}>
+      {!loading && !error && !(vendorMode ? vendors.length : availableItems.length) && !vendorDetail && <p>{vendorMode ? (editMode ? 'No vendors yet. Choose Add vendor to get started.' : 'No vendors yet. Enter edit mode to add a vendor.') : 'No ready-to-eat food is available right now. Please check again soon.'}</p>}
+      {vendorMode && !vendorDetail && !query && <div className="vendorGrid">{vendorRecords.map(vendor => <div className="vendorWidget" key={vendor.id}>
         <a className="vendorTile" href={`/vendor/${vendor.id}`} onClick={event => followVendor(event, vendor.id)}><span aria-hidden="true">🍽</span><strong>{vendor.vendor_name}</strong><small>{items.filter(item => item.vendor_name === vendor.vendor_name).length} food items</small><span className="vendorViewLabel">View food</span></a>
         {editMode && <div className="foodActions"><button type="button" disabled={saving} onClick={() => editVendor(vendor)} aria-label={`Edit vendor ${vendor.vendor_name}`}>Edit vendor</button></div>}
       </div>)}</div>}
@@ -296,11 +303,9 @@ export default function FoodPage({ vendorMode }) {
         <div className="foodActions"><button className="foodPrimaryButton" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save update'}</button><button type="button" disabled={saving} onClick={() => { setEditing(null); setCode(''); setError(''); }}>Cancel</button></div>
       {editing.id && <DeleteAction saving={saving} onDelete={() => deleteEntry(false)} />}
       </form></FoodEditorDialog>}
-      {vendorDetail && selected && <>
+      {vendorDetail && selected && !query && <>
         <div className="vendorFoodSummary"><h2>Food menu</h2><span>{visible.length} food items · {visible.reduce((total, item) => total + Number(item.count), 0)} in stock</span></div>
-        {!loading && !error && !visible.length && (query
-          ? <p role="status">No food matches “{search.trim()}”. Try another food name or clear your search.</p>
-          : <p>No food added for this vendor yet.{editMode && ' Choose Add food to get started.'}</p>)}
+        {!loading && !error && !visible.length && <p>No food added for this vendor yet.{editMode && ' Choose Add food to get started.'}</p>}
         <div id="vendor-food-results" className="vendorFoodGrid">{visible.map(item => <article id={`food-${item.id}`} tabIndex={-1} className={`vendorFoodCard${foodAnchor === `food-${item.id}` ? ' vendorFoodHighlighted' : ''}`} key={item.id}>
           <span className={`vendorFoodStatus ${item.count === 0 ? 'soldOut' : ''}`}>{item.count === 0 ? 'Sold out' : 'Available'}</span>
           <h3>{item.food_name}</h3>
@@ -309,7 +314,17 @@ export default function FoodPage({ vendorMode }) {
           {editMode && <div className="foodActions"><button type="button" onClick={() => edit(item)} disabled={saving}>Update food</button></div>}
         </article>)}</div>
       </>}
-      {!vendorMode && visible.length > 0 && <div className="foodTableWrap"><table id="food-results" className="foodTable"><thead><tr><th>Food name</th><th>Vendor</th><th>Updated time</th></tr></thead><tbody>{visible.map(item => <tr key={item.id}><td data-label="Food name"><div className="rteFoodName">{item.food_name}<span className="rteAvailable"><span className="rteAvailableDot" aria-hidden="true" />Available</span></div></td><td data-label="Vendor">{item.vendor_name}</td><td data-label="Updated"><time dateTime={item.updated_time}>{new Date(item.updated_time).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })}</time></td></tr>)}</tbody></table></div>}
+      {!vendorMode && visible.length > 0 && <div className="foodTableWrap">
+        <table id="food-results" className="foodTable">
+          <thead><tr><th>Food name</th><th>Vendor</th><th>Updated time</th>{editMode && <th className="foodEditCell">Actions</th>}</tr></thead>
+          <tbody>{visible.map(item => <tr key={item.id}>
+            <td data-label="Food name"><div className="rteFoodName">{item.food_name}<span className="rteAvailable"><span className="rteAvailableDot" aria-hidden="true" />Available</span></div></td>
+            <td data-label="Vendor">{item.vendor_name}</td>
+            <td data-label="Updated"><time dateTime={item.updated_time}>{new Date(item.updated_time).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })}</time></td>
+            {editMode && <td className="foodEditCell"><button type="button" disabled={saving} onClick={() => edit(item)} aria-label={`Edit ${item.food_name} from ${item.vendor_name}`}>Edit</button></td>}
+          </tr>)}</tbody>
+        </table>
+      </div>}
     </section>
     {vendorMode && <dialog ref={pinDialog} className="pinDialog" onCancel={event => { event.preventDefault(); if (!unlocking) { setPinOpen(false); setCode(''); } }}>
       <form onSubmit={unlock}>
