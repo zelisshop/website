@@ -5276,7 +5276,13 @@ a {
 .foodTable th, .foodTable td { padding: 18px; border-bottom: 1px solid #f1e7e9; overflow-wrap: anywhere; }
 .foodTable th { background: #f5e6e9; font-size: 12px; white-space: nowrap; }
 .foodTable td { font-size: 14px; }
-.foodTable .foodEditCell { width: 1%; text-align: right; }
+.foodTable .foodEditCell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.foodTable .foodEditCell button { white-space: nowrap; }
 .stockCount { display: inline-block; background: #e9f2e7; color: #34562d; padding: 6px 10px; border-radius: 20px; white-space: nowrap; }
 .stockCount.soldOut { background: #f5e6e9; color: #8b1530; }
 .foodForm { padding: 24px; background: white; border: 1px solid #eadcde; border-radius: 8px; margin: 30px 0; max-width: 600px; }
